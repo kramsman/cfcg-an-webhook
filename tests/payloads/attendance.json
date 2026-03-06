@@ -1,0 +1,40 @@
+[
+  {
+    "_synthetic": false,
+    "_note": "Real-shape attendance payload. Replace with an actual captured AN webhook when available.",
+    "idempotency_key": "attendance-payload-001",
+    "action_network:sponsor": {"title": "CFCG"},
+    "osdi:attendance": {
+      "created_date": "2024-06-01T14:22:00Z",
+      "modified_date": "2024-06-01T14:22:00Z",
+      "_links": {
+        "osdi:person": {
+          "href": "https://actionnetwork.org/api/v2/people/attendance-person-id"
+        }
+      },
+      "person": {
+        "given_name": "Maria",
+        "family_name": "Gonzalez",
+        "email_addresses": [
+          {"address": "maria.gonzalez@example.com", "primary": true}
+        ],
+        "phone_numbers": [
+          {"number": "713-555-0192", "number_type": "Mobile", "primary": true}
+        ],
+        "postal_addresses": [
+          {
+            "primary": true,
+            "address_lines": ["789 Main Street"],
+            "locality": "Houston",
+            "region": "TX",
+            "postal_code": "77002"
+          }
+        ],
+        "custom_fields": {
+          "volunteer": "1",
+          "newsletter": "yes"
+        }
+      }
+    }
+  }
+]

@@ -667,7 +667,7 @@ class TestSnapshotParsing:
             "recipient_email":      "robert.johnson@example.com",
             "recipient_phone":      "404-555-1212",
             "recipient_phone_type": "Mobile",
-            "recipient_address":    "456 Peachtree St Ne",
+            "recipient_address":    "456 Peachtree St NE",
             "recipient_city":       "Atlanta",
             "recipient_state":      "GA",
             "recipient_zip_raw":    "30308",
@@ -679,6 +679,138 @@ class TestSnapshotParsing:
         print(f"  Parameters : (none — uses real_an_snapshot fixture)")
         print(f"  Input      : {record['osdi:attendance']['person']['given_name']} "
               f"{record['osdi:attendance']['person']['family_name']}, zip=30308")
+
+        result = main.parse_recipient(record)
+
+        print(f"  Output     : {result}")
+
+        for key, exp_val in expected.items():
+            assert result[key] == exp_val, (
+                f"Snapshot mismatch on key {key!r}: "
+                f"expected {exp_val!r}, got {result[key]!r}"
+            )
+
+    def test_snapshot_real_signature_payload(self, payload_signature):
+        """
+        Snapshot: parses the real captured osdi:signature payload from tests/payloads/signature.json.
+
+        Notable edge cases this real payload reveals:
+          - postal_code '904043' is 6 digits → to_zip5 returns 0 (> 99999)
+          - region is 'California' (full state name, not abbreviation) — stored as-is
+          - No address_lines field → recipient_address = ''
+          - No locality field → recipient_city = ''
+          - custom_fields has 'employer' key (non-boolean value stored as-is)
+          - add_tags and comments fields exist in payload but are NOT currently parsed
+        """
+        record = payload_signature[0]
+
+        expected = {
+            "idempotency_key":      "1679091c5a880faf6fb5e6087eb1b2dc",
+            "json_type":            "signature",
+            "person_id":            "699da712-929f-11e3-a2e9-12313d316c29",
+            "recipient_first_name": "John",
+            "recipient_last_name":  "Smith",
+            "recipient_email":      "jsmith@mail.com",
+            "recipient_phone":      "12024444444",
+            "recipient_phone_type": "Mobile",
+            "recipient_address":    "",           # no address_lines in payload
+            "recipient_city":       "",           # no locality in payload
+            "recipient_state":      "California", # full name, not abbreviation
+            "recipient_zip_raw":    "904043",     # 6-digit zip — invalid
+            "recipient_zip":        0,            # 904043 > 99999 → to_zip5 returns 0
+            "custom_fields":        ["employer: Action Squared"],
+        }
+
+        print(f"\n--- test_snapshot_real_signature_payload ---")
+        print(f"  Parameters : (none — uses payload_signature fixture)")
+        print(f"  Input      : John Smith, zip='904043' (6-digit, invalid)")
+
+        result = main.parse_recipient(record)
+
+        print(f"  Output     : {result}")
+
+        for key, exp_val in expected.items():
+            assert result[key] == exp_val, (
+                f"Snapshot mismatch on key {key!r}: "
+                f"expected {exp_val!r}, got {result[key]!r}"
+            )
+
+    def test_snapshot_real_donation_payload(self, payload_donation):
+        """
+        Snapshot: parses the real captured osdi:donation payload from tests/payloads/donation.json.
+
+        Notable edge cases this real payload reveals:
+          - No given_name field → recipient_first_name = ''
+          - region is 'District of Columbia' (full name, not abbreviation) — stored as-is
+          - custom_fields has 'phone_number' key with a non-boolean value — stored as-is
+          - recipients, payment, action_network:recurrence fields exist but are NOT parsed
+          - add_tags and action_network:referrer_data exist but are NOT parsed
+        """
+        record = payload_donation[0]
+
+        expected = {
+            "idempotency_key":      "1679091c5a880faf6fb5e6087eb1b2dcdon",
+            "json_type":            "donation",
+            "person_id":            "0df69aaf-3614-4315-b73a-088866b404e8",
+            "recipient_first_name": "",               # no given_name in payload
+            "recipient_last_name":  "Smith",
+            "recipient_email":      "jsmith@mail.com",
+            "recipient_phone":      "12024444444",
+            "recipient_phone_type": "Mobile",
+            "recipient_address":    "1600 Pennsylvania Ave NW",
+            "recipient_city":       "Washington",
+            "recipient_state":      "District of Columbia",  # full name, not abbreviation
+            "recipient_zip_raw":    "20036",
+            "recipient_zip":        20036,
+            "custom_fields":        ["phone_number: 123.456.7890"],
+        }
+
+        print(f"\n--- test_snapshot_real_donation_payload ---")
+        print(f"  Parameters : (none — uses payload_donation fixture)")
+        print(f"  Input      : Smith (no given_name), zip='20036', region='District of Columbia'")
+
+        result = main.parse_recipient(record)
+
+        print(f"  Output     : {result}")
+
+        for key, exp_val in expected.items():
+            assert result[key] == exp_val, (
+                f"Snapshot mismatch on key {key!r}: "
+                f"expected {exp_val!r}, got {result[key]!r}"
+            )
+
+    def test_snapshot_real_submission_payload(self, payload_submission):
+        """
+        Snapshot: parses the real captured osdi:submission payload from tests/payloads/submission.json.
+
+        Notable edge cases this real payload reveals:
+          - No given_name field → recipient_first_name = ''
+          - region is 'District of Columbia' (full name, not abbreviation) — stored as-is
+          - custom_fields has 'phone_number' key with a non-boolean value — stored as-is
+          - add_tags and action_network:referrer_data exist but are NOT parsed
+        """
+        record = payload_submission[0]
+
+        expected = {
+            "idempotency_key":      "1679091c5a880faf6fb5e6087eb1b2dcsub",
+            "json_type":            "submission",
+            "person_id":            "0df69aaf-3614-4315-b73a-088866b404e8",
+            "recipient_first_name": "",               # no given_name in payload
+            "recipient_last_name":  "Smith",
+            "recipient_email":      "jsmith@mail.com",
+            "recipient_phone":      "12024444444",
+            "recipient_phone_type": "Mobile",
+            "recipient_address":    "1600 Pennsylvania Ave NW",
+            "recipient_city":       "Washington",
+            "recipient_state":      "District of Columbia",  # full name, not abbreviation
+            "recipient_zip_raw":    "20036",
+            "recipient_zip":        20036,
+            "custom_fields":        ["phone_number: 123.456.7890"],
+        }
+
+        print(f"\n--- test_snapshot_real_submission_payload ---")
+        print(f"  Parameters : (none — uses payload_submission fixture)")
+        print(f"  Input      : Smith (no given_name), zip='20036', region='District of Columbia'")
 
         result = main.parse_recipient(record)
 

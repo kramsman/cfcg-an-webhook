@@ -107,6 +107,40 @@ All feature flags default to `false` and are set in `.env` (local) or as Cloud R
 | `CHECK_ALREADY_EMAILED` | `false` | Skip people already emailed |
 | `UPDATE_GROUP_KEY` | `false` | Write region key back to Action Network after emailing |
 
+## Test Suite
+
+### How payload JSON files are read and tested
+
+Payload files in `tests/payloads/` are loaded by fixtures in `conftest.py` and
+tested in two ways in `tests/test_main.py`:
+
+**1. `TestPayloadFileParsing` — smoke test for all 4 types**
+Calls `parse_recipient()` on each payload file and confirms it doesn't crash.
+Checks that `json_type`, `email`, and `zip` are present in the result.
+Runs for: `attendance`, `submission`, `signature`, `donation`.
+
+**2. `TestSnapshotParsing` — exact field-by-field assertions**
+Parses a fixed payload and asserts every field matches an expected dict.
+If Action Network changes their payload structure, this test fails and shows
+exactly which field changed. Two snapshot tests exist:
+- `test_snapshot_parse_output` — Robert Johnson, Atlanta GA (synthetic fixture)
+- `test_snapshot_real_signature_payload` — John Smith (real captured AN payload)
+
+**How files are loaded** (`conftest.py`):
+```
+JSON file → _load_payload() → fixture (e.g. payload_signature) → test calls parse_recipient() → assertions
+```
+
+**Real vs synthetic payloads** — each JSON file has a `_synthetic` flag:
+- `_synthetic: false` = real captured AN data (attendance, signature)
+- `_synthetic: true` = placeholder, needs replacing with real data (submission, donation)
+  A test warning is issued listing which types still need real payloads.
+
+**Snapshot tests are marked `@pytest.mark.integration`** and are skipped when
+running `pytest -m "not integration"`. Run them with `pytest tests/ -s`.
+
+---
+
 ## Pending Improvements
 
 - **`parse_recipient()` — replace nested `.get()` chains with Pydantic models**
