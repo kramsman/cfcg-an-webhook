@@ -16,4 +16,12 @@ dependencies = [
 ]
 
 [tool.uv]
-dev-dependencies = []
+dev-dependencies = [
+    "pytest>=8.0",
+    "pytest-dotenv>=0.5",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests as integration tests (may call external services)",
+]
