@@ -84,6 +84,8 @@ The outer wrapper for `osdi:attendance` payloads:
 - **VCS**: Git / GitHub, with auto-deploy via GitHub Actions on push to `main`
 
 ## What Was Done
+
+### Session 1 — Project setup
 - Created project structure with `cfcg_an_webhook/main.py` as the Flask app
 - Created `pyproject.toml`, `Procfile`, `.env.example`, `test_local.py`, `zip_dict.json`
 - Created `.github/workflows/deploy.yml` for auto-deploy to Cloud Run
@@ -91,7 +93,27 @@ The outer wrapper for `osdi:attendance` payloads:
 - Updated `SETUP_GUIDE.md`: corrected project path to Dropbox location
 - Updated `README.md` and `SETUP_GUIDE.md`: replaced all `cfcg-webhook` → `cfcg-an-webhook`
 - Updated directory structure diagram in `README.md` to match actual folder layout
-- Staged all files for first commit in PyCharm (not yet committed)
+- Deployed to Cloud Run; fixed Procfile (`main:app` → `cfcg_an_webhook.main:app`)
+
+### Session 2 — Test suite + OSDI type registry
+- Added `UPDATE_GROUP_KEY` feature flag to main.py, `.env`, and README
+- Added Google-style docstrings (Args/Returns) to all functions in main.py
+- Created global `/test_create` skill at `~/.claude/skills/test_create/SKILL.md`
+- Built full pytest test suite: `tests/conftest.py` (fixtures), `tests/test_main.py` (32 unit + 10 integration tests)
+- Added `OSDI_TYPE_CONFIG` registry replacing `VALID_OSDI_TYPES`:
+  - `parsed` flag: marks types whose payload structure has been verified
+  - `send_email` flag: controls whether a welcome email is sent for each type
+  - attendance + submission → send email; signature + donation + others → skip
+- Added send_email gate in `process_recipient()`, warning log + notification email for unknown types
+- Created `tests/payloads/` with real captured AN webhook payloads for all 4 types
+- Added snapshot tests for each real payload — will catch AN format changes
+- Documented AN webhook + REST API reference URLs in ISSUES.md
+
+### Real payload edge cases discovered
+- **signature**: 6-digit zip (`904043` → parsed as 0), full state name (`California`), no address or city
+- **donation**: no `given_name` → `recipient_first_name = ""`; full state name (`District of Columbia`)
+- **submission**: same as donation — no `given_name`, full state name
+- All: `region` field may be a full state name instead of 2-letter abbreviation — stored as-is
 
 ## Decisions — Dependencies & Packages
 - **`functions-framework`** — considered but rejected. It's for Google Cloud Functions, not Cloud Run. This project uses Flask directly, which is the correct approach for Cloud Run.

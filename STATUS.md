@@ -46,3 +46,17 @@
 - [x] Local dev tested successfully
 - [x] Procfile fixed: `main:app` → `cfcg_an_webhook.main:app`
 - [x] SETUP_GUIDE.md updated with all lessons learned during actual setup
+- [x] Added `UPDATE_GROUP_KEY` feature flag (writes region key back to AN after emailing)
+- [x] Added Google-style docstrings (Args/Returns) to all functions in main.py
+- [x] Created global `/test_create` skill at `~/.claude/skills/test_create/SKILL.md`
+- [x] Built full pytest test suite: `tests/conftest.py`, `tests/test_main.py` (32 unit + 10 integration)
+- [x] Replaced `VALID_OSDI_TYPES` set with `OSDI_TYPE_CONFIG` dict (parsed + send_email flags per type)
+- [x] Added `send_email` gate in `process_recipient()` — donation/signature skip email, attendance/submission send
+- [x] Added warning + notification email when an unknown osdi type arrives
+- [x] Created `tests/payloads/` with real captured AN payloads for all 4 types:
+  - `attendance.json` — real payload
+  - `signature.json` — real payload (John Smith, 6-digit zip, full state name)
+  - `donation.json` — real payload (no given_name, District of Columbia)
+  - `submission.json` — real payload (no given_name, District of Columbia)
+- [x] Added snapshot tests for all 4 real payloads — will catch AN format changes
+- [x] Documented AN webhook + REST API URLs in ISSUES.md for all resource types
