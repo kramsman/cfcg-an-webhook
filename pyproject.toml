@@ -1,0 +1,19 @@
+[project]
+name = "cfcg-webhook"
+version = "0.1.0"
+description = "Action Network webhook receiver — sends welcome emails via SendGrid"
+requires-python = ">=3.11"
+
+dependencies = [
+    "flask>=3.0",
+    "gunicorn>=21.0",
+    "sendgrid>=6.11",
+    "google-cloud-secret-manager>=2.20",
+    "google-cloud-storage>=2.10",
+    "loguru>=0.7",
+    "python-dotenv>=1.0",
+    "requests>=2.31",
+]
+
+[tool.uv]
+dev-dependencies = []

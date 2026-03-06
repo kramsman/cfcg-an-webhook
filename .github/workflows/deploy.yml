@@ -1,0 +1,47 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]   # deploys automatically on every push to main
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # required for Workload Identity Federation
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Install uv and export requirements for Cloud Run
+        run: |
+          pip install uv
+          uv export --no-dev --no-hashes -o requirements.txt
+
+      - name: Deploy to Cloud Run (source deploy — no Docker needed)
+        run: |
+          gcloud run deploy cfcg-webhook \
+            --source . \
+            --region us-east1 \
+            --platform managed \
+            --allow-unauthenticated \
+            --service-account "cfcg-webhook-sa@${{ secrets.CLOUD_PROJECT_ID }}.iam.gserviceaccount.com" \
+            --set-env-vars "CLOUD_PROJECT_ID=${{ secrets.CLOUD_PROJECT_ID }}" \
+            --set-env-vars "FROM_EMAIL=${{ secrets.FROM_EMAIL }}" \
+            --set-env-vars "FROM_NAME=CFCG Team" \
+            --set-env-vars "SEND_RECIPIENT_EMAILS=true" \
+            --set-env-vars "SEND_NOTIFICATION_EMAILS=false" \
+            --set-env-vars "ALLOWED_RECIPIENT_EMAILS=" \
+            --project ${{ secrets.CLOUD_PROJECT_ID }}
