@@ -433,7 +433,7 @@ class TestParseRecipientEdgeCases:
         assert result["recipient_zip_raw"] == "12207-1234"
 
     def test_unknown_osdi_type_still_parses(self, sample_payload):
-        """Unknown osdi: type logs a warning but still parses the record."""
+        """Type not in OSDI_TYPE_CONFIG logs a warning but still parses the record."""
         record = sample_payload[0]
         # Replace osdi:attendance with an unknown type
         record["osdi:unknown_future_type"] = record.pop("osdi:attendance")
@@ -505,6 +505,74 @@ class TestProcessRecipientValidation:
 
         assert status == 400
         assert "no email" in msg.lower()
+
+    def test_send_email_false_skips_email(self, sample_payload, minimal_zip_dict, monkeypatch):
+        """Type with send_email=False (signature) is skipped without calling SendGrid."""
+        # Change payload type to signature
+        sample_payload[0]["osdi:signature"] = sample_payload[0].pop("osdi:attendance")
+        monkeypatch.setattr(main, "ZIP_TO_ORG", minimal_zip_dict)
+        monkeypatch.setattr(main, "SEND_RECIPIENT_EMAILS", True)
+        recipient = main.parse_recipient(sample_payload[0])
+
+        print(f"\n--- test_send_email_false_skips_email ---")
+        print(f"  Parameters : json_type='signature', send_email=False in OSDI_TYPE_CONFIG")
+        print(f"  Input      : recipient json_type={recipient['json_type']!r}, zip={recipient['recipient_zip']}")
+
+        msg, status = main.process_recipient(recipient)
+
+        print(f"  Output     : msg={msg!r}, status={status}")
+
+        assert status == 200
+        assert "send_email=False" in msg
+
+    def test_send_email_true_proceeds(self, sample_payload, minimal_zip_dict, monkeypatch):
+        """Type with send_email=True (attendance) proceeds to the email step."""
+        monkeypatch.setattr(main, "ZIP_TO_ORG", minimal_zip_dict)
+        monkeypatch.setattr(main, "SEND_RECIPIENT_EMAILS", False)  # disable actual send
+        recipient = main.parse_recipient(sample_payload[0])
+
+        print(f"\n--- test_send_email_true_proceeds ---")
+        print(f"  Parameters : json_type='attendance', send_email=True in OSDI_TYPE_CONFIG")
+        print(f"  Input      : recipient json_type={recipient['json_type']!r}")
+
+        msg, status = main.process_recipient(recipient)
+
+        print(f"  Output     : msg={msg!r}, status={status}")
+
+        # Reaches the SEND_RECIPIENT_EMAILS check (not blocked by send_email=False)
+        assert msg == "Email sending disabled"
+        assert status == 200
+
+    def test_unknown_type_no_email_and_notifies(self, sample_payload, minimal_zip_dict, monkeypatch):
+        """Type not in OSDI_TYPE_CONFIG: no email sent, notification fired if enabled."""
+        sample_payload[0]["osdi:unknown_type"] = sample_payload[0].pop("osdi:attendance")
+        monkeypatch.setattr(main, "ZIP_TO_ORG", minimal_zip_dict)
+        monkeypatch.setattr(main, "SEND_RECIPIENT_EMAILS", True)
+        monkeypatch.setattr(main, "SEND_NOTIFICATION_EMAILS", True)
+
+        notified = {}
+        def mock_notify(subject, message):
+            notified["subject"] = subject
+            notified["message"] = message
+        monkeypatch.setattr(main, "_send_notification", mock_notify)
+
+        recipient = main.parse_recipient(sample_payload[0])
+
+        print(f"\n--- test_unknown_type_no_email_and_notifies ---")
+        print(f"  Parameters : json_type='unknown_type', SEND_NOTIFICATION_EMAILS=True")
+        print(f"  Input      : recipient json_type={recipient['json_type']!r}")
+
+        msg, status = main.process_recipient(recipient)
+
+        print(f"  Output     : msg={msg!r}, status={status}")
+        print(f"  Output     : notification subject={notified.get('subject')!r}")
+        print(f"  Output     : notification message={notified.get('message')!r}")
+
+        assert status == 200
+        assert "unknown type" in msg.lower()
+        assert "subject" in notified, "Expected notification to be sent"
+        assert "unknown_type" in notified["subject"]
+        assert "OSDI_TYPE_CONFIG" in notified["message"]
 
 
 # ─── webhook endpoint: additional edge cases ──────────────────────────────────
@@ -742,24 +810,26 @@ class TestActionNetworkLive:
 class TestPayloadCoverage:
 
     def test_all_osdi_types_have_payload_files(self):
-        """Every type in VALID_OSDI_TYPES must have a payload file in tests/payloads/.
+        """Every parsed=True type in OSDI_TYPE_CONFIG must have a payload file in tests/payloads/.
 
-        Fails immediately if a new type is added to VALID_OSDI_TYPES but no
-        corresponding test payload file exists, making the gap visible.
+        Fails immediately if a verified type is added to OSDI_TYPE_CONFIG without
+        a corresponding payload file, making the gap visible.
+        Only checks parsed=True types — unverified types (parsed=False) don't have files yet.
         """
         payloads_dir = pathlib.Path(__file__).parent / "payloads"
+        parsed_types = {t for t, cfg in main.OSDI_TYPE_CONFIG.items() if cfg["parsed"]}
 
         print(f"\n--- test_all_osdi_types_have_payload_files ---")
         print(f"  Parameters : (none)")
-        print(f"  Input      : VALID_OSDI_TYPES={main.VALID_OSDI_TYPES}")
+        print(f"  Input      : parsed types={sorted(parsed_types)}")
 
         missing = []
-        for osdi_type in main.VALID_OSDI_TYPES:
+        for osdi_type in parsed_types:
             path = payloads_dir / f"{osdi_type}.json"
             if not path.exists():
                 missing.append(osdi_type)
 
-        print(f"  Output     : payload files found={sorted(main.VALID_OSDI_TYPES - set(missing))}")
+        print(f"  Output     : payload files found={sorted(parsed_types - set(missing))}")
         if missing:
             print(f"  Output     : MISSING={missing}")
 
@@ -784,7 +854,7 @@ class TestPayloadCoverage:
         import json
         synthetic = []
         real = []
-        for osdi_type in sorted(main.VALID_OSDI_TYPES):
+        for osdi_type in sorted(t for t, cfg in main.OSDI_TYPE_CONFIG.items() if cfg["parsed"]):
             path = payloads_dir / f"{osdi_type}.json"
             if path.exists():
                 data = json.loads(path.read_text())

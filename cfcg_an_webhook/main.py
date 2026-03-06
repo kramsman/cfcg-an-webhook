@@ -59,9 +59,30 @@ UPDATE_GROUP_KEY      = os.environ.get("UPDATE_GROUP_KEY",      "false").lower()
 # create_organizer_info_by_zip_file() in the cfcg-reports generator project.
 ZIP_DICT_FIELDS = ['region_key', 'email', 'nickname', 'cc_org']
 
-# Known Action Network osdi: event types this service handles.
-# A warning is logged if an unexpected type arrives — the record is still processed.
-VALID_OSDI_TYPES = {'attendance', 'submission', 'signature', 'donation'}
+# Registry of Action Network osdi: event types.
+#
+# parsed:     True  = parse_recipient() verified/tested for this type (payload file exists)
+# send_email: True  = send a welcome email when this type arrives
+#
+# Types NOT in this table are UNKNOWN — a warning is logged and no email is sent.
+# To add a new type: set flags here and add a payload file to tests/payloads/<type>.json
+# Webhook docs: https://actionnetwork.org/docs/webhooks/<type>
+# REST API docs: https://actionnetwork.org/docs/v2/<type>
+#
+# NOT included (admin/definition resources that don't arrive as person-action webhooks):
+#   Advocacy Campaigns, Campaigns, Custom Fields, Embeds, Event Campaigns, Events,
+#   Forms, Fundraising Pages, Items, Lists, Messages, Metadata, People, Petitions,
+#   Queries, Surveys, Tags, Unique ID Lists, Wrappers
+OSDI_TYPE_CONFIG = {
+    # type              parsed    send_email
+    'attendance':  {'parsed': True,  'send_email': True },   # event RSVP
+    'submission':  {'parsed': True,  'send_email': True },   # form submission
+    'signature':   {'parsed': True,  'send_email': False},   # petition signature
+    'donation':    {'parsed': True,  'send_email': False},   # donation
+    'outreach':    {'parsed': False, 'send_email': False},   # advocacy campaign action
+    'response':    {'parsed': False, 'send_email': False},   # survey response
+    'tagging':     {'parsed': False, 'send_email': False},   # tag applied to person
+}
 
 # ─── GCP Secret Manager ───────────────────────────────────────────────────────
 
@@ -186,8 +207,11 @@ def parse_recipient(record: dict) -> dict:
             out["json_type"] = key.split(":")[1]
             break
 
-    if out["json_type"] and out["json_type"] not in VALID_OSDI_TYPES:
-        logger.warning(f"Unexpected osdi type: {out['json_type']!r} — expected one of {VALID_OSDI_TYPES}")
+    if out["json_type"] and out["json_type"] not in OSDI_TYPE_CONFIG:
+        logger.warning(f"Unknown osdi type: {out['json_type']!r} — not in OSDI_TYPE_CONFIG. "
+                       f"Add it to the registry if this type should be handled.")
+    elif out["json_type"] and not OSDI_TYPE_CONFIG[out["json_type"]]["parsed"]:
+        logger.info(f"osdi type {out['json_type']!r} is known but not yet verified (parsed=False)")
 
     if osdi_data is None:
         logger.warning("No osdi: key found in webhook record")
@@ -482,6 +506,23 @@ def process_recipient(recipient: dict) -> tuple:
     if not recipient.get("recipient_email"):
         logger.warning(f"No email address for person {recipient.get('person_id')} — skipping")
         return "Skipped (no email address)", 400
+
+    json_type = recipient.get("json_type")
+    type_config = OSDI_TYPE_CONFIG.get(json_type, {})
+
+    if json_type and json_type not in OSDI_TYPE_CONFIG:
+        msg = (f"Unknown osdi type {json_type!r} received for person "
+               f"{recipient.get('person_id')} <{recipient.get('recipient_email')}>. "
+               f"This type is not in OSDI_TYPE_CONFIG — no email was sent. "
+               f"Add it to the registry in main.py if it should be handled.")
+        logger.warning(msg)
+        if SEND_NOTIFICATION_EMAILS:
+            _send_notification(f"Unknown osdi type received: {json_type!r}", msg)
+        return f"Skipped (unknown type {json_type!r})", 200
+
+    if not type_config.get("send_email", False):
+        logger.info(f"osdi type {json_type!r} is configured send_email=False — skipping")
+        return f"Skipped (send_email=False for type {json_type!r})", 200
 
     if not SEND_RECIPIENT_EMAILS:
         logger.info(f"Email disabled; skipping {recipient.get('recipient_email')}")
