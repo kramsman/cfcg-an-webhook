@@ -59,6 +59,10 @@ UPDATE_GROUP_KEY      = os.environ.get("UPDATE_GROUP_KEY",      "false").lower()
 # create_organizer_info_by_zip_file() in the cfcg-reports generator project.
 ZIP_DICT_FIELDS = ['region_key', 'email', 'nickname', 'cc_org']
 
+# Known Action Network osdi: event types this service handles.
+# A warning is logged if an unexpected type arrives — the record is still processed.
+VALID_OSDI_TYPES = {'attendance', 'submission', 'signature', 'donation'}
+
 # ─── GCP Secret Manager ───────────────────────────────────────────────────────
 
 _secret_client = secretmanager.SecretManagerServiceClient()
@@ -181,6 +185,9 @@ def parse_recipient(record: dict) -> dict:
             osdi_data = val
             out["json_type"] = key.split(":")[1]
             break
+
+    if out["json_type"] and out["json_type"] not in VALID_OSDI_TYPES:
+        logger.warning(f"Unexpected osdi type: {out['json_type']!r} — expected one of {VALID_OSDI_TYPES}")
 
     if osdi_data is None:
         logger.warning("No osdi: key found in webhook record")
@@ -471,6 +478,10 @@ def process_recipient(recipient: dict) -> tuple:
     if error:
         logger.warning(f"Skipping {recipient.get('person_id')}: error={error!r}")
         return f"Skipped (error: {error})", 400
+
+    if not recipient.get("recipient_email"):
+        logger.warning(f"No email address for person {recipient.get('person_id')} — skipping")
+        return "Skipped (no email address)", 400
 
     if not SEND_RECIPIENT_EMAILS:
         logger.info(f"Email disabled; skipping {recipient.get('recipient_email')}")

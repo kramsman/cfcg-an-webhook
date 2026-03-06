@@ -36,9 +36,13 @@ CREDENTIALS NEEDED FOR INTEGRATION TESTS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
+import json
 import os
+import pathlib
 import pytest
 from dotenv import load_dotenv
+
+PAYLOADS_DIR = pathlib.Path(__file__).parent / "payloads"
 
 # Load .env before any test imports main (which reads env vars at module level)
 load_dotenv()
@@ -116,6 +120,90 @@ def minimal_zip_dict():
 
 
 @pytest.fixture
+def sample_payload_multiple_contacts(sample_payload):
+    """Payload with 2 emails, 2 phones, 2 addresses — primary is the SECOND item in each list.
+    Tests that primary selection isn't just picking index [0].
+    """
+    person = sample_payload[0]["osdi:attendance"]["person"]
+    person["email_addresses"] = [
+        {"address": "jane.old@example.com", "primary": False},
+        {"address": "jane.smith@example.com", "primary": True},
+    ]
+    person["phone_numbers"] = [
+        {"number": "555-000-0000", "number_type": "Home", "primary": False},
+        {"number": "555-867-5309", "number_type": "Mobile", "primary": True},
+    ]
+    person["postal_addresses"] = [
+        {
+            "primary": False,
+            "address_lines": ["999 Old St"],
+            "locality": "Troy",
+            "region": "NY",
+            "postal_code": "12180",
+        },
+        {
+            "primary": True,
+            "address_lines": ["123 Main St"],
+            "locality": "Albany",
+            "region": "NY",
+            "postal_code": "12207",
+        },
+    ]
+    return sample_payload
+
+
+@pytest.fixture
+def sample_payload_no_email(sample_payload):
+    """Payload where email_addresses is an empty list — tests empty-email guard."""
+    sample_payload[0]["osdi:attendance"]["person"]["email_addresses"] = []
+    return sample_payload
+
+
+@pytest.fixture
+def real_an_snapshot():
+    """
+    A realistic Action Network webhook payload capturing the full structure
+    as actually sent. Used for snapshot testing — if AN changes their format,
+    parse_recipient output will diverge from the expected dict and the test will fail.
+    """
+    return [
+        {
+            "idempotency_key": "snapshot-key-abc123",
+            "action_network:sponsor": {"title": "CFCG"},
+            "osdi:attendance": {
+                "created_date": "2024-06-01T14:22:00Z",
+                "modified_date": "2024-06-01T14:22:00Z",
+                "_links": {
+                    "osdi:person": {
+                        "href": "https://actionnetwork.org/api/v2/people/snapshot-person-id"
+                    }
+                },
+                "person": {
+                    "given_name": "Robert",
+                    "family_name": "Johnson",
+                    "email_addresses": [
+                        {"address": "robert.johnson@example.com", "primary": True}
+                    ],
+                    "phone_numbers": [
+                        {"number": "404-555-1212", "number_type": "Mobile", "primary": True}
+                    ],
+                    "postal_addresses": [
+                        {
+                            "primary": True,
+                            "address_lines": ["456 Peachtree St NE"],
+                            "locality": "Atlanta",
+                            "region": "GA",
+                            "postal_code": "30308",
+                        }
+                    ],
+                    "custom_fields": {"volunteer": "1"},
+                },
+            },
+        }
+    ]
+
+
+@pytest.fixture
 def parsed_recipient(sample_payload, minimal_zip_dict, monkeypatch):
     """A fully parsed + organizer-attached recipient dict, ready for email building."""
     from cfcg_an_webhook import main
@@ -124,3 +212,44 @@ def parsed_recipient(sample_payload, minimal_zip_dict, monkeypatch):
     recipient = main.parse_recipient(sample_payload[0])
     main.attach_organizer(recipient)
     return recipient
+
+
+# ─── Payload file fixtures ────────────────────────────────────────────────────
+# One fixture per osdi: type — loaded from tests/payloads/<type>.json.
+# Replace synthetic placeholders with real captured AN payloads when available.
+# Files marked "_synthetic": true are known placeholders, not real AN data.
+
+def _load_payload(osdi_type: str) -> list:
+    """Load a payload JSON file from tests/payloads/."""
+    path = PAYLOADS_DIR / f"{osdi_type}.json"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"No payload file for osdi type '{osdi_type}'. "
+            f"Add tests/payloads/{osdi_type}.json with a real captured AN payload."
+        )
+    with open(path) as f:
+        return json.load(f)
+
+
+@pytest.fixture
+def payload_attendance():
+    """Real-shape osdi:attendance payload loaded from tests/payloads/attendance.json."""
+    return _load_payload("attendance")
+
+
+@pytest.fixture
+def payload_submission():
+    """Synthetic osdi:submission payload — replace with real captured AN data."""
+    return _load_payload("submission")
+
+
+@pytest.fixture
+def payload_signature():
+    """Synthetic osdi:signature payload — replace with real captured AN data."""
+    return _load_payload("signature")
+
+
+@pytest.fixture
+def payload_donation():
+    """Synthetic osdi:donation payload — replace with real captured AN data."""
+    return _load_payload("donation")

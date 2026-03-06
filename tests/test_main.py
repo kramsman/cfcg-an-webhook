@@ -6,12 +6,13 @@ Run integration:    pytest tests/ -s -m integration
 Run unit only:      pytest tests/ -s -m "not integration"
 
 SKIPPED (too simple to test):
-  - to_zip5: single expression, no branching — covered implicitly via parse_recipient tests
+  - to_zip5: single expression, no branching — covered implicitly via parse_recipient edge case tests
   - _add_copy_emails: thin list-append helper — covered implicitly via _build_welcome_email tests
   - health: one-liner Flask route returning a static dict
 """
 
 import os
+import pathlib
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -363,6 +364,265 @@ class TestWebhookEndpoint:
         assert body["results"][0]["email"] == "jane.smith@example.com"
 
 
+# ─── parse_recipient edge cases ───────────────────────────────────────────────
+
+class TestParseRecipientEdgeCases:
+
+    def test_primary_email_not_first(self, sample_payload_multiple_contacts):
+        """Primary email is second in list — must pick it, not index [0]."""
+        record = sample_payload_multiple_contacts[0]
+
+        print(f"\n--- test_primary_email_not_first ---")
+        print(f"  Parameters : record with 2 emails, primary is index [1]")
+        print(f"  Input      : emails={record['osdi:attendance']['person']['email_addresses']}")
+
+        result = main.parse_recipient(record)
+
+        print(f"  Output     : recipient_email={result['recipient_email']!r}")
+
+        assert result["recipient_email"] == "jane.smith@example.com"
+
+    def test_primary_phone_not_first(self, sample_payload_multiple_contacts):
+        """Primary phone is second in list — must pick it, not index [0]."""
+        record = sample_payload_multiple_contacts[0]
+
+        print(f"\n--- test_primary_phone_not_first ---")
+        print(f"  Parameters : record with 2 phones, primary is index [1]")
+        print(f"  Input      : phones={record['osdi:attendance']['person']['phone_numbers']}")
+
+        result = main.parse_recipient(record)
+
+        print(f"  Output     : recipient_phone={result['recipient_phone']!r}, "
+              f"type={result['recipient_phone_type']!r}")
+
+        assert result["recipient_phone"] == "555-867-5309"
+        assert result["recipient_phone_type"] == "Mobile"
+
+    def test_primary_address_not_first(self, sample_payload_multiple_contacts):
+        """Primary address is second in list — must pick it, not index [0]."""
+        record = sample_payload_multiple_contacts[0]
+
+        print(f"\n--- test_primary_address_not_first ---")
+        print(f"  Parameters : record with 2 addresses, primary is index [1]")
+        print(f"  Input      : addresses={record['osdi:attendance']['person']['postal_addresses']}")
+
+        result = main.parse_recipient(record)
+
+        print(f"  Output     : zip={result['recipient_zip']}, city={result['recipient_city']!r}, "
+              f"address={result['recipient_address']!r}")
+
+        assert result["recipient_zip"] == 12207
+        assert result["recipient_city"] == "Albany"
+        assert result["recipient_address"] == "123 Main St"
+
+    def test_zip_plus_4_stripped(self, sample_payload):
+        """ZIP+4 format '12207-1234' should parse to integer 12207."""
+        record = sample_payload[0]
+        record["osdi:attendance"]["person"]["postal_addresses"][0]["postal_code"] = "12207-1234"
+
+        print(f"\n--- test_zip_plus_4_stripped ---")
+        print(f"  Parameters : postal_code='12207-1234'")
+        print(f"  Input      : raw ZIP+4 string")
+
+        result = main.parse_recipient(record)
+
+        print(f"  Output     : recipient_zip={result['recipient_zip']}, "
+              f"zip_raw={result['recipient_zip_raw']!r}")
+
+        assert result["recipient_zip"] == 12207
+        assert result["recipient_zip_raw"] == "12207-1234"
+
+    def test_unknown_osdi_type_still_parses(self, sample_payload):
+        """Unknown osdi: type logs a warning but still parses the record."""
+        record = sample_payload[0]
+        # Replace osdi:attendance with an unknown type
+        record["osdi:unknown_future_type"] = record.pop("osdi:attendance")
+
+        print(f"\n--- test_unknown_osdi_type_still_parses ---")
+        print(f"  Parameters : record with osdi:unknown_future_type key")
+        print(f"  Input      : {list(record.keys())}")
+
+        result = main.parse_recipient(record)
+
+        print(f"  Output     : json_type={result['json_type']!r}, "
+              f"email={result['recipient_email']!r}")
+
+        assert result["json_type"] == "unknown_future_type"
+        assert result["recipient_email"] == "jane.smith@example.com"
+
+    def test_schema_canary(self):
+        """Every expected output key is always present, even on a completely minimal payload.
+
+        This test is the safety net — if parse_recipient ever drops a key (due to a
+        code change or unexpected payload structure), this will catch it immediately.
+        """
+        minimal_record = {
+            "idempotency_key": "x",
+            "action_network:sponsor": {},
+            "osdi:attendance": {},
+        }
+        expected_keys = {
+            "idempotency_key", "json_type", "person_id", "created_date", "modified_date",
+            "recipient_first_name", "recipient_last_name", "recipient_email",
+            "recipient_phone", "recipient_phone_type", "recipient_address",
+            "recipient_city", "recipient_state", "recipient_zip_raw",
+            "recipient_zip", "custom_fields",
+        }
+
+        print(f"\n--- test_schema_canary ---")
+        print(f"  Parameters : minimal record with empty osdi:attendance")
+        print(f"  Input      : {minimal_record}")
+
+        result = main.parse_recipient(minimal_record)
+
+        print(f"  Output     : keys={sorted(result.keys())}")
+
+        missing = expected_keys - set(result.keys())
+        assert not missing, f"parse_recipient is missing expected keys: {missing}"
+
+
+# ─── process_recipient: empty email guard ─────────────────────────────────────
+
+class TestProcessRecipientValidation:
+
+    def test_no_email_returns_400(self, sample_payload_no_email, minimal_zip_dict, monkeypatch):
+        """Person with no email address is skipped — must not reach SendGrid."""
+        monkeypatch.setattr(main, "ZIP_TO_ORG", minimal_zip_dict)
+        monkeypatch.setattr(main, "SEND_RECIPIENT_EMAILS", True)
+
+        # Give the no-email payload a valid zip so it passes the zip check
+        addr = sample_payload_no_email[0]["osdi:attendance"]["person"]["postal_addresses"][0]
+        addr["postal_code"] = "12207"
+        recipient = main.parse_recipient(sample_payload_no_email[0])
+
+        print(f"\n--- test_no_email_returns_400 ---")
+        print(f"  Parameters : SEND_RECIPIENT_EMAILS=True")
+        print(f"  Input      : recipient with empty email_addresses list, valid zip")
+
+        msg, status = main.process_recipient(recipient)
+
+        print(f"  Output     : msg={msg!r}, status={status}")
+
+        assert status == 400
+        assert "no email" in msg.lower()
+
+
+# ─── webhook endpoint: additional edge cases ──────────────────────────────────
+
+class TestWebhookEdgeCases:
+
+    @pytest.fixture
+    def client(self, minimal_zip_dict, monkeypatch):
+        """Flask test client with email sending disabled."""
+        monkeypatch.setattr(main, "ZIP_TO_ORG", minimal_zip_dict)
+        monkeypatch.setattr(main, "SEND_RECIPIENT_EMAILS", False)
+        main.app.config["TESTING"] = True
+        with main.app.test_client() as client:
+            yield client
+
+    def test_empty_list_rejected(self, client):
+        """Empty list [] is rejected — no action_network:sponsor to check."""
+        payload = []
+
+        print(f"\n--- test_empty_list_rejected ---")
+        print(f"  Parameters : POST /webhook")
+        print(f"  Input      : payload=[]")
+
+        response = client.post("/webhook", json=payload)
+
+        print(f"  Output     : status={response.status_code}, body={response.get_json()}")
+
+        assert response.status_code == 400
+
+    @pytest.mark.integration
+    def test_multiple_records_processed(self, client, sample_payload, minimal_zip_dict, monkeypatch):
+        """
+        Integration: batch payload with 2 records — both are processed and
+        reported in results. Email sending is disabled.
+        """
+        monkeypatch.setattr(main, "ZIP_TO_ORG", minimal_zip_dict)
+        monkeypatch.setattr(main, "SEND_RECIPIENT_EMAILS", False)
+
+        # Build a second record with a different email
+        record2 = sample_payload[0].copy()
+        record2["idempotency_key"] = "second-key"
+        record2["osdi:attendance"] = {
+            **sample_payload[0]["osdi:attendance"],
+            "person": {
+                **sample_payload[0]["osdi:attendance"]["person"],
+                "given_name": "Bob",
+                "family_name": "Jones",
+                "email_addresses": [{"address": "bob.jones@example.com", "primary": True}],
+            },
+        }
+        batch_payload = [sample_payload[0], record2]
+
+        print(f"\n--- test_multiple_records_processed ---")
+        print(f"  Parameters : POST /webhook, SEND_RECIPIENT_EMAILS=False")
+        print(f"  Input      : batch of {len(batch_payload)} records")
+
+        response = client.post("/webhook", json=batch_payload)
+        body = response.get_json()
+
+        print(f"  Output     : status={response.status_code}, processed={body.get('processed')}")
+        print(f"  Output     : results={body.get('results')}")
+
+        assert response.status_code == 200
+        assert body["processed"] == 2
+        emails = [r["email"] for r in body["results"]]
+        assert "jane.smith@example.com" in emails
+        assert "bob.jones@example.com" in emails
+
+
+# ─── Snapshot: catches Action Network payload format changes ──────────────────
+
+@pytest.mark.integration
+class TestSnapshotParsing:
+
+    def test_snapshot_parse_output(self, real_an_snapshot):
+        """
+        Integration: parses a fixed realistic AN payload and asserts the output
+        matches exactly. If Action Network changes their payload structure,
+        this test will fail and show precisely what changed.
+
+        To update the snapshot: edit the `expected` dict below to match the
+        new output, then verify the change is intentional.
+        """
+        record = real_an_snapshot[0]
+
+        expected = {
+            "idempotency_key":      "snapshot-key-abc123",
+            "json_type":            "attendance",
+            "person_id":            "snapshot-person-id",
+            "recipient_first_name": "Robert",
+            "recipient_last_name":  "Johnson",
+            "recipient_email":      "robert.johnson@example.com",
+            "recipient_phone":      "404-555-1212",
+            "recipient_phone_type": "Mobile",
+            "recipient_address":    "456 Peachtree St Ne",
+            "recipient_city":       "Atlanta",
+            "recipient_state":      "GA",
+            "recipient_zip_raw":    "30308",
+            "recipient_zip":        30308,
+            "custom_fields":        ["volunteer: Yes"],
+        }
+
+        print(f"\n--- test_snapshot_parse_output ---")
+        print(f"  Parameters : (none — uses real_an_snapshot fixture)")
+        print(f"  Input      : {record['osdi:attendance']['person']['given_name']} "
+              f"{record['osdi:attendance']['person']['family_name']}, zip=30308")
+
+        result = main.parse_recipient(record)
+
+        print(f"  Output     : {result}")
+
+        for key, exp_val in expected.items():
+            assert result[key] == exp_val, (
+                f"Snapshot mismatch on key {key!r}: "
+                f"expected {exp_val!r}, got {result[key]!r}"
+            )
+
+
 # ─── External service: GCS zip dict load (integration) ────────────────────────
 
 class TestLoadZipDict:
@@ -475,3 +735,122 @@ class TestActionNetworkLive:
         main.update_group_key(group_key, person_id)
 
         print(f"  Output     : completed without error (check Action Network to confirm)")
+
+
+# ─── Payload file coverage check ──────────────────────────────────────────────
+
+class TestPayloadCoverage:
+
+    def test_all_osdi_types_have_payload_files(self):
+        """Every type in VALID_OSDI_TYPES must have a payload file in tests/payloads/.
+
+        Fails immediately if a new type is added to VALID_OSDI_TYPES but no
+        corresponding test payload file exists, making the gap visible.
+        """
+        payloads_dir = pathlib.Path(__file__).parent / "payloads"
+
+        print(f"\n--- test_all_osdi_types_have_payload_files ---")
+        print(f"  Parameters : (none)")
+        print(f"  Input      : VALID_OSDI_TYPES={main.VALID_OSDI_TYPES}")
+
+        missing = []
+        for osdi_type in main.VALID_OSDI_TYPES:
+            path = payloads_dir / f"{osdi_type}.json"
+            if not path.exists():
+                missing.append(osdi_type)
+
+        print(f"  Output     : payload files found={sorted(main.VALID_OSDI_TYPES - set(missing))}")
+        if missing:
+            print(f"  Output     : MISSING={missing}")
+
+        assert not missing, (
+            f"No payload file for osdi type(s): {missing}. "
+            f"Add tests/payloads/<type>.json with a captured AN payload for each."
+        )
+
+    def test_synthetic_payloads_flagged(self):
+        """Report which payload files are still synthetic placeholders.
+
+        Does NOT fail — just prints a warning so you know which types still
+        need real captured payload data. Replace synthetic files by copying
+        a real AN webhook payload into the corresponding JSON file.
+        """
+        payloads_dir = pathlib.Path(__file__).parent / "payloads"
+
+        print(f"\n--- test_synthetic_payloads_flagged ---")
+        print(f"  Parameters : (none)")
+        print(f"  Input      : payload files in {payloads_dir}")
+
+        import json
+        synthetic = []
+        real = []
+        for osdi_type in sorted(main.VALID_OSDI_TYPES):
+            path = payloads_dir / f"{osdi_type}.json"
+            if path.exists():
+                data = json.loads(path.read_text())
+                is_synthetic = data[0].get("_synthetic", False) if data else True
+                (synthetic if is_synthetic else real).append(osdi_type)
+
+        print(f"  Output     : real payloads    = {real}")
+        print(f"  Output     : synthetic (TODO) = {synthetic}")
+
+        if synthetic:
+            import warnings
+            warnings.warn(
+                f"\nSynthetic payload files still need real AN data: {synthetic}\n"
+                f"Capture a real webhook and replace the contents of "
+                f"tests/payloads/<type>.json for each.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+
+# ─── Payload file parse tests ─────────────────────────────────────────────────
+
+class TestPayloadFileParsing:
+    """Parse each payload file through parse_recipient() and assert schema is valid.
+
+    These tests catch two things:
+    1. The payload files themselves are well-formed (not broken JSON/structure)
+    2. parse_recipient() can handle each osdi: type without crashing
+
+    When you replace a synthetic payload with a real one, these tests
+    confirm the real payload parses correctly.
+    """
+
+    EXPECTED_KEYS = {
+        "idempotency_key", "json_type", "person_id", "created_date", "modified_date",
+        "recipient_first_name", "recipient_last_name", "recipient_email",
+        "recipient_phone", "recipient_phone_type", "recipient_address",
+        "recipient_city", "recipient_state", "recipient_zip_raw",
+        "recipient_zip", "custom_fields",
+    }
+
+    def _assert_parses(self, payload: list, osdi_type: str):
+        record = payload[0]
+        print(f"\n--- test_payload_file_parses: {osdi_type} ---")
+        print(f"  Parameters : osdi_type={osdi_type!r}")
+        print(f"  Input      : payload keys={list(record.keys())}")
+
+        result = main.parse_recipient(record)
+
+        print(f"  Output     : json_type={result['json_type']!r}, "
+              f"email={result['recipient_email']!r}, zip={result['recipient_zip']}")
+
+        missing_keys = self.EXPECTED_KEYS - set(result.keys())
+        assert not missing_keys, f"parse_recipient missing keys for {osdi_type}: {missing_keys}"
+        assert result["json_type"] == osdi_type, (
+            f"Expected json_type={osdi_type!r}, got {result['json_type']!r}"
+        )
+
+    def test_attendance_payload_parses(self, payload_attendance):
+        self._assert_parses(payload_attendance, "attendance")
+
+    def test_submission_payload_parses(self, payload_submission):
+        self._assert_parses(payload_submission, "submission")
+
+    def test_signature_payload_parses(self, payload_signature):
+        self._assert_parses(payload_signature, "signature")
+
+    def test_donation_payload_parses(self, payload_donation):
+        self._assert_parses(payload_donation, "donation")
