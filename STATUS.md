@@ -10,22 +10,29 @@
 - GitHub Actions: blocked by org policy (service account key creation not allowed)
 
 ## Pending — Needs Confirmation
-- [ ] **Redeploy after Procfile fix** — run in PyCharm terminal (**MUST BE RUN FROM TERMINAL IN PROJECT DIRECTORY**):
-  ```bash
-  gcloud run deploy cfcg-an-webhook \
-    --source . \
-    --region us-east1 \
-    --platform managed \
-    --allow-unauthenticated \
-    --service-account "cfcg-an-webhook-sa@trim-sunlight-489423-h3.iam.gserviceaccount.com" \
-    --set-env-vars "CLOUD_PROJECT_ID=trim-sunlight-489423-h3" \
-    --set-env-vars "FROM_EMAIL=centerforcommonground.tech@gmail.com" \
-    --set-env-vars "FROM_NAME=CFCG Team" \
-    --set-env-vars "SEND_RECIPIENT_EMAILS=true" \
-    --set-env-vars "SEND_NOTIFICATION_EMAILS=false" \
-    --set-env-vars "ALLOWED_RECIPIENT_EMAILS=" \
-    --set-env-vars "GCS_BUCKET=cfcg-an-webhook-storage-trim-sunlight-489423-h3"
-  ```
+## Deployment Commands
+Run these from the project root terminal. Two scripts handle all deployment needs:
+
+**Deploy code + update env vars** (use when code has changed):
+```bash
+cd ~/Library/CloudStorage/Dropbox/Postcard\ Files/ROVPrograms/cfcg-an-webhook && ./deploy.sh
+```
+`deploy.sh` deploys the code to Cloud Run, then automatically runs `set-env-vars.sh`.
+
+**Update env vars only, no redeploy** (use when only config has changed):
+```bash
+cd ~/Library/CloudStorage/Dropbox/Postcard\ Files/ROVPrograms/cfcg-an-webhook && ./set-env-vars.sh
+```
+`set-env-vars.sh` updates all environment variables in seconds without redeploying.
+
+**Update a single env var quickly** — replace `LOG_PAYLOADS=true` with any `VAR=value`:
+```bash
+gcloud run services update cfcg-an-webhook \
+  --region us-east1 \
+  --update-env-vars "LOG_PAYLOADS=true" \
+  --project trim-sunlight-489423-h3
+```
+Only the specified variable changes — everything else stays as-is.
 - [ ] Verify health check after redeploy:
   `curl https://cfcg-an-webhook-520473536006.us-east1.run.app/health`
   Should return: `{"status": "ok", "zip_codes_loaded": 41000+}`
