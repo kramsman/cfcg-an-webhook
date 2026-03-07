@@ -595,7 +595,7 @@ def webhook():
         return {"error": "Invalid Action Network payload"}, 400
 
     if LOG_PAYLOADS:
-        logger.info(f"[PAYLOAD DETAIL LOG] Raw webhook payload (contains personal info — "
+        logger.info(f"[***** PAYLOAD DETAIL LOG] Raw webhook payload (contains personal info — "
                     f"disable LOG_PAYLOADS when stable): {json.dumps(payload)}")
 
     results = []
