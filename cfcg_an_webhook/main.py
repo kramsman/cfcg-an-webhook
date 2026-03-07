@@ -48,8 +48,22 @@ ALLOWED_RECIPIENT_EMAILS = [e.strip() for e in _allow_raw.split(",") if e.strip(
 
 NOTIFICATION_EMAIL_LIST = [{"email": "rovmailtester@gmail.com"}]
 
-ALWAYS_CC_LIST  = []   # list of (email, name) tuples added to every outgoing email
-ALWAYS_BCC_LIST = []
+def _parse_email_name_list(raw: str) -> list:
+    """Parse 'email:name,email:name' string into a list of (email, name) tuples."""
+    pairs = []
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if ":" in item:
+            email, name = item.split(":", 1)
+            pairs.append((email.strip(), name.strip()))
+        else:
+            pairs.append((item, ""))
+    return pairs
+
+ALWAYS_CC_LIST  = _parse_email_name_list(os.environ.get("ALWAYS_CC_LIST",  ""))
+ALWAYS_BCC_LIST = _parse_email_name_list(os.environ.get("ALWAYS_BCC_LIST", ""))
 
 CHECK_IDEMPOTENCY     = os.environ.get("CHECK_IDEMPOTENCY",     "false").lower() == "true"
 CHECK_ALREADY_EMAILED = os.environ.get("CHECK_ALREADY_EMAILED", "false").lower() == "true"
