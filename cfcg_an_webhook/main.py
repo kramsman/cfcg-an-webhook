@@ -54,6 +54,7 @@ ALWAYS_BCC_LIST = []
 CHECK_IDEMPOTENCY     = os.environ.get("CHECK_IDEMPOTENCY",     "false").lower() == "true"
 CHECK_ALREADY_EMAILED = os.environ.get("CHECK_ALREADY_EMAILED", "false").lower() == "true"
 UPDATE_GROUP_KEY      = os.environ.get("UPDATE_GROUP_KEY",      "false").lower() == "true"
+LOG_PAYLOADS          = os.environ.get("LOG_PAYLOADS",          "false").lower() == "true"
 
 # Path to local zip_dict.json for development. If empty, loads from GCS.
 ZIP_DICT_PATH = os.environ.get("ZIP_DICT_PATH", "")
@@ -562,6 +563,10 @@ def webhook():
     if not payload or payload[0].get("action_network:sponsor") is None:
         logger.warning("Rejected: missing action_network:sponsor")
         return {"error": "Invalid Action Network payload"}, 400
+
+    if LOG_PAYLOADS:
+        logger.info(f"[PAYLOAD LOG] Raw webhook payload (contains personal info — "
+                    f"disable LOG_PAYLOADS when stable):\n{json.dumps(payload, indent=2)}")
 
     results = []
     for record in payload:
