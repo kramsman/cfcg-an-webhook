@@ -32,6 +32,9 @@ load_dotenv()
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
+# Path to local zip_dict.json for development. If empty, loads from GCS.
+ZIP_DICT_PATH = os.environ.get("ZIP_DICT_PATH", "")
+
 CLOUD_PROJECT_ID = os.environ["CLOUD_PROJECT_ID"]   # required - set in .env or Cloud Run env vars
 GCS_BUCKET       = os.environ.get("GCS_BUCKET", "")  # required in Cloud Run; not needed locally if file exists
 FROM_EMAIL       = os.environ.get("FROM_EMAIL", "centerforcommonground.tech@gmail.com")
@@ -70,9 +73,6 @@ CHECK_IDEMPOTENCY     = os.environ.get("CHECK_IDEMPOTENCY",     "false").lower()
 CHECK_ALREADY_EMAILED = os.environ.get("CHECK_ALREADY_EMAILED", "false").lower() == "true"
 UPDATE_GROUP_KEY      = os.environ.get("UPDATE_GROUP_KEY",      "false").lower() == "true"
 LOG_PAYLOADS          = os.environ.get("LOG_PAYLOADS",          "false").lower() == "true"
-
-# Path to local zip_dict.json for development. If empty, loads from GCS.
-ZIP_DICT_PATH = os.environ.get("ZIP_DICT_PATH", "")
 
 # Fields read from zip_dict.json — must match org_fields passed to
 # create_organizer_info_by_zip_file() in the cfcg-reports generator project.
