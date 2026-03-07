@@ -98,7 +98,7 @@ ZIP_DICT_FIELDS = ['region_key', 'email', 'nickname', 'cc_org']
 #   Forms, Fundraising Pages, Items, Lists, Messages, Metadata, People, Petitions,
 #   Queries, Surveys, Tags, Unique ID Lists, Wrappers
 OSDI_TYPE_CONFIG = {
-    # type              parsed    send_email
+    # type           type parsed    send_email
     'attendance':  {'parsed': True,  'send_email': True },   # event RSVP
     'submission':  {'parsed': True,  'send_email': True },   # form submission
     'signature':   {'parsed': True,  'send_email': False},   # petition signature
@@ -431,8 +431,8 @@ def _send_welcome_email(recipient: dict) -> tuple:
     to_email = recipient.get("recipient_email", "")
 
     if ALLOWED_RECIPIENT_EMAILS and to_email not in ALLOWED_RECIPIENT_EMAILS:
-        logger.info(f"Skipped (not in ALLOWED_RECIPIENT_EMAILS): {to_email}")
-        return "Skipped — not in allow-list", 200
+        logger.info(f"Would have sent (not in ALLOWED_RECIPIENT_EMAILS): {to_email}")
+        return "Would have sent — not in allow-list", 200
 
     api_key    = get_secret("SENDGRID_API_KEY")
     sg         = SendGridAPIClient(api_key=api_key)
@@ -440,14 +440,12 @@ def _send_welcome_email(recipient: dict) -> tuple:
 
     if LOG_EMAILS:
         p = email_data["personalizations"][0]
+        body = email_data['content'][0]['value'].replace('\n', '\\n')
         logger.info(
-            f"[EMAIL LOG] Outgoing welcome email (contains personal info — "
-            f"disable LOG_EMAILS when stable):\n"
-            f"  To:      {p.get('to')}\n"
-            f"  CC:      {p.get('cc', [])}\n"
-            f"  BCC:     {p.get('bcc', [])}\n"
-            f"  Subject: {p.get('subject')}\n"
-            f"  Body:\n{email_data['content'][0]['value']}"
+            f"[EMAIL DETAIL LOG] Outgoing welcome email (contains personal info — "
+            f"disable LOG_EMAILS when stable): "
+            f"To={p.get('to')} CC={p.get('cc', [])} BCC={p.get('bcc', [])} "
+            f"Subject={p.get('subject')!r} Body={body!r}"
         )
 
     logger.info(f"Sending welcome email → {to_email}")
@@ -586,7 +584,7 @@ def webhook():
     Configure your Action Network webhook to point to:
         https://<your-cloud-run-url>/webhook
     """
-    payload = request.get_json(silent=True)
+    payload = request.get_json(silent=False)
 
     if not isinstance(payload, list):
         logger.warning(f"Rejected: payload is {type(payload).__name__}, expected list")
@@ -597,8 +595,8 @@ def webhook():
         return {"error": "Invalid Action Network payload"}, 400
 
     if LOG_PAYLOADS:
-        logger.info(f"[PAYLOAD LOG] Raw webhook payload (contains personal info — "
-                    f"disable LOG_PAYLOADS when stable):\n{json.dumps(payload, indent=2)}")
+        logger.info(f"[PAYLOAD DETAIL LOG] Raw webhook payload (contains personal info — "
+                    f"disable LOG_PAYLOADS when stable): {json.dumps(payload)}")
 
     results = []
     for record in payload:
