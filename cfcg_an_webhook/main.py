@@ -43,6 +43,8 @@ FROM_NAME        = os.environ.get("FROM_NAME",  "Center for Common Ground Team")
 # Set SEND_RECIPIENT_EMAILS=false during testing to skip actual sends. Converts string in .env to boolean.
 SEND_RECIPIENT_EMAILS    = os.environ.get("SEND_RECIPIENT_EMAILS",    "true").lower()  == "true"
 SEND_NOTIFICATION_EMAILS = os.environ.get("SEND_NOTIFICATION_EMAILS", "false").lower() == "true"
+logger.debug(f"SEND_RECIPIENT_EMAILS= {SEND_RECIPIENT_EMAILS}")
+logger.debug(f"SEND_NOTIFICATION_EMAILS= {SEND_NOTIFICATION_EMAILS}")
 
 # Comma-separated allow-list for testing. Leave empty to email everyone.
 # Example:  ALLOWED_RECIPIENT_EMAILS=you@gmail.com,test@example.com
@@ -74,6 +76,8 @@ CHECK_ALREADY_EMAILED = os.environ.get("CHECK_ALREADY_EMAILED", "false").lower()
 UPDATE_GROUP_KEY      = os.environ.get("UPDATE_GROUP_KEY",      "false").lower() == "true"
 LOG_PAYLOADS          = os.environ.get("LOG_PAYLOADS",          "false").lower() == "true"
 LOG_EMAILS            = os.environ.get("LOG_EMAILS",            "false").lower() == "true"
+logger.debug(f"LOG_PAYLOADS= {LOG_PAYLOADS}")
+logger.debug(f"LOG_EMAILS= {LOG_EMAILS}")
 
 # Fields read from zip_dict.json — must match org_fields passed to
 # create_organizer_info_by_zip_file() in the cfcg-reports generator project.

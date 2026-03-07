@@ -39,9 +39,18 @@ jobs:
             --allow-unauthenticated \
             --service-account "cfcg-webhook-sa@${{ secrets.CLOUD_PROJECT_ID }}.iam.gserviceaccount.com" \
             --set-env-vars "CLOUD_PROJECT_ID=${{ secrets.CLOUD_PROJECT_ID }}" \
+            --set-env-vars "GCS_BUCKET=${{ secrets.GCS_BUCKET }}" \
             --set-env-vars "FROM_EMAIL=${{ secrets.FROM_EMAIL }}" \
-            --set-env-vars "FROM_NAME=CFCG Team" \
+            --set-env-vars "FROM_NAME=Center for Common Ground Team" \
             --set-env-vars "SEND_RECIPIENT_EMAILS=true" \
             --set-env-vars "SEND_NOTIFICATION_EMAILS=false" \
             --set-env-vars "ALLOWED_RECIPIENT_EMAILS=" \
+            --set-env-vars "NOTIFICATION_EMAIL_LIST=${{ secrets.NOTIFICATION_EMAIL_LIST }}" \
+            --set-env-vars "ALWAYS_CC_LIST=" \
+            --set-env-vars "ALWAYS_BCC_LIST=" \
+            --set-env-vars "CHECK_IDEMPOTENCY=false" \
+            --set-env-vars "CHECK_ALREADY_EMAILED=false" \
+            --set-env-vars "UPDATE_GROUP_KEY=false" \
+            --set-env-vars "LOG_PAYLOADS=false" \
+            --set-env-vars "LOG_EMAILS=false" \
             --project ${{ secrets.CLOUD_PROJECT_ID }}
