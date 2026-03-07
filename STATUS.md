@@ -10,9 +10,9 @@
 - GitHub Actions: blocked by org policy (service account key creation not allowed)
 
 ## Pending — Needs Confirmation
-- [ ] **Redeploy after Procfile fix** — run in PyCharm terminal:
+- [ ] **Redeploy after Procfile fix** — run in PyCharm terminal (**MUST BE RUN FROM TERMINAL IN PROJECT DIRECTORY**):
   ```bash
-  find . -exec touch {} \; && gcloud run deploy cfcg-an-webhook \
+  gcloud run deploy cfcg-an-webhook \
     --source . \
     --region us-east1 \
     --platform managed \
@@ -60,3 +60,4 @@
   - `submission.json` — real payload (no given_name, District of Columbia)
 - [x] Added snapshot tests for all 4 real payloads — will catch AN format changes
 - [x] Documented AN webhook + REST API URLs in ISSUES.md for all resource types
+- [x] Replaced file-existence check in `load_zip_dict()` with explicit `ZIP_DICT_PATH` env var

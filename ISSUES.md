@@ -165,12 +165,12 @@ running `pytest -m "not integration"`. Run them with `pytest tests/ -s`.
 
 ## Pending Improvements
 
-- **`parse_recipient()` — replace nested `.get()` chains with Pydantic models**
+- **`parse_recipient()` — consider Pydantic for payload parsing**
   Currently uses 80+ lines of nested `.get()` calls to parse the Action Network payload.
-  Pydantic models would define the expected structure explicitly, validate types, handle
-  missing/null fields via defaults automatically, and give precise error messages when a field
-  is missing or the wrong type — rather than silently returning `""` or `None`.
-  Adds `pydantic` as a dependency. This is the right long-term fix for payload parsing.
+  Pydantic models would define the expected structure explicitly, handle missing/null fields
+  via defaults automatically, and shrink the function significantly. Adds `pydantic` as a
+  dependency. Worth doing if payload fields are extended or if maintainability is a priority.
+  Not urgent — current code works correctly.
   See `cfcg_an_webhook/main.py` → `parse_recipient()`.
 
 - **`parse_recipient()` — consider glom for safer nested access (lighter alternative to Pydantic)**
@@ -181,19 +181,9 @@ running `pytest -m "not integration"`. Run them with `pytest tests/ -s`.
   Example: `glom(record, Coalesce("osdi:attendance.person.email_addresses.0.address", default=""))`
   See `cfcg_an_webhook/main.py` → `parse_recipient()`.
 
-- **`parse_recipient()` — consider Pydantic for payload parsing**
-  Currently uses 80+ lines of nested `.get()` calls to parse the Action Network payload.
-  Pydantic models would define the expected structure explicitly, handle missing/null fields
-  via defaults automatically, and shrink the function significantly. Adds `pydantic` as a
-  dependency. Worth doing if payload fields are extended or if maintainability is a priority.
-  Not urgent — current code works correctly.
-  See `cfcg_an_webhook/main.py` → `parse_recipient()`.
-- **`load_zip_dict()` — use explicit env var instead of file existence check**
-  Currently the function checks if `zip_dict.json` exists locally; if not, falls back to GCS.
-  A cleaner approach: add a `ZIP_DICT_PATH` env var in `.env` pointing to the local file.
-  If set, load from that path. If empty (as in Cloud Run), load from GCS.
-  This makes the behavior explicit and allows easy testing with different files.
-  See `cfcg_an_webhook/main.py` → `load_zip_dict()`.
+- ~~**`load_zip_dict()` — use explicit env var instead of file existence check**~~
+  **Done.** Added `ZIP_DICT_PATH` env var. If set, loads from that path; if empty, loads from GCS.
+  Set in `.env` for local dev; leave empty in Cloud Run.
 
 ## Files Committed to VCS
 - `.idea/.gitignore`, `.idea/misc.xml`, `.idea/vcs.xml` — included (non-personal PyCharm settings)

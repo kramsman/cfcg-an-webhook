@@ -55,6 +55,9 @@ CHECK_IDEMPOTENCY     = os.environ.get("CHECK_IDEMPOTENCY",     "false").lower()
 CHECK_ALREADY_EMAILED = os.environ.get("CHECK_ALREADY_EMAILED", "false").lower() == "true"
 UPDATE_GROUP_KEY      = os.environ.get("UPDATE_GROUP_KEY",      "false").lower() == "true"
 
+# Path to local zip_dict.json for development. If empty, loads from GCS.
+ZIP_DICT_PATH = os.environ.get("ZIP_DICT_PATH", "")
+
 # Fields read from zip_dict.json — must match org_fields passed to
 # create_organizer_info_by_zip_file() in the cfcg-reports generator project.
 ZIP_DICT_FIELDS = ['region_key', 'email', 'nickname', 'cc_org']
@@ -109,8 +112,8 @@ def get_secret(secret_id: str) -> str:
 def load_zip_dict() -> dict:
     """Load zip → organizer mapping.
 
-    Uses local file if present (local development).
-    Downloads from GCS when running in Cloud Run.
+    If ZIP_DICT_PATH env var is set, loads from that local file path (development).
+    Otherwise downloads from GCS (Cloud Run production).
 
     Returns:
         Dict mapping 5-digit zip string to organizer info dict with keys
@@ -119,10 +122,9 @@ def load_zip_dict() -> dict:
     Raises:
         ValueError: If the loaded file is missing any expected fields.
     """
-    local_path = pathlib.Path(__file__).parent.parent / "zip_dict.json"
-    if local_path.exists():
-        logger.info(f"Loading zip lookup table from local file {local_path}")
-        with open(local_path) as f:
+    if ZIP_DICT_PATH:
+        logger.info(f"Loading zip lookup table from local file {ZIP_DICT_PATH}")
+        with open(ZIP_DICT_PATH) as f:
             data = json.load(f)
     else:
         logger.info(f"Loading zip lookup table from GCS bucket {GCS_BUCKET}")
