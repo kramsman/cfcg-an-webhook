@@ -35,9 +35,9 @@ load_dotenv()
 CLOUD_PROJECT_ID = os.environ["CLOUD_PROJECT_ID"]   # required - set in .env or Cloud Run env vars
 GCS_BUCKET       = os.environ.get("GCS_BUCKET", "")  # required in Cloud Run; not needed locally if file exists
 FROM_EMAIL       = os.environ.get("FROM_EMAIL", "centerforcommonground.tech@gmail.com")
-FROM_NAME        = os.environ.get("FROM_NAME",  "CFCG Team")
+FROM_NAME        = os.environ.get("FROM_NAME",  "Center for Common Ground Team")
 
-# Set SEND_RECIPIENT_EMAILS=false during testing to skip actual sends
+# Set SEND_RECIPIENT_EMAILS=false during testing to skip actual sends. Converts string in .env to boolean.
 SEND_RECIPIENT_EMAILS    = os.environ.get("SEND_RECIPIENT_EMAILS",    "true").lower()  == "true"
 SEND_NOTIFICATION_EMAILS = os.environ.get("SEND_NOTIFICATION_EMAILS", "false").lower() == "true"
 
@@ -46,7 +46,8 @@ SEND_NOTIFICATION_EMAILS = os.environ.get("SEND_NOTIFICATION_EMAILS", "false").l
 _allow_raw = os.environ.get("ALLOWED_RECIPIENT_EMAILS", "")
 ALLOWED_RECIPIENT_EMAILS = [e.strip() for e in _allow_raw.split(",") if e.strip()]
 
-NOTIFICATION_EMAIL_LIST = [{"email": "rovmailtester@gmail.com"}]
+_notif_raw = os.environ.get("NOTIFICATION_EMAIL_LIST", "")
+NOTIFICATION_EMAIL_LIST = [{"email": e.strip()} for e in _notif_raw.split(",") if e.strip()]
 
 def _parse_email_name_list(raw: str) -> list:
     """Parse 'email:name,email:name' string into a list of (email, name) tuples."""
