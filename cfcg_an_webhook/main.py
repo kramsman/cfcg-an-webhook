@@ -73,6 +73,7 @@ CHECK_IDEMPOTENCY     = os.environ.get("CHECK_IDEMPOTENCY",     "false").lower()
 CHECK_ALREADY_EMAILED = os.environ.get("CHECK_ALREADY_EMAILED", "false").lower() == "true"
 UPDATE_GROUP_KEY      = os.environ.get("UPDATE_GROUP_KEY",      "false").lower() == "true"
 LOG_PAYLOADS          = os.environ.get("LOG_PAYLOADS",          "false").lower() == "true"
+LOG_EMAILS            = os.environ.get("LOG_EMAILS",            "false").lower() == "true"
 
 # Fields read from zip_dict.json — must match org_fields passed to
 # create_organizer_info_by_zip_file() in the cfcg-reports generator project.
@@ -432,6 +433,18 @@ def _send_welcome_email(recipient: dict) -> tuple:
     api_key    = get_secret("SENDGRID_API_KEY")
     sg         = SendGridAPIClient(api_key=api_key)
     email_data = _build_welcome_email(recipient)
+
+    if LOG_EMAILS:
+        p = email_data["personalizations"][0]
+        logger.info(
+            f"[EMAIL LOG] Outgoing welcome email (contains personal info — "
+            f"disable LOG_EMAILS when stable):\n"
+            f"  To:      {p.get('to')}\n"
+            f"  CC:      {p.get('cc', [])}\n"
+            f"  BCC:     {p.get('bcc', [])}\n"
+            f"  Subject: {p.get('subject')}\n"
+            f"  Body:\n{email_data['content'][0]['value']}"
+        )
 
     logger.info(f"Sending welcome email → {to_email}")
     response = sg.client.mail.send.post(request_body=email_data)

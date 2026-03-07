@@ -129,6 +129,7 @@ All feature flags default to `false` and are set in `.env` (local) or as Cloud R
 | `CHECK_ALREADY_EMAILED` | `false` | Skip people already emailed |
 | `UPDATE_GROUP_KEY` | `false` | Write region key back to Action Network after emailing |
 | `LOG_PAYLOADS` | `false` | Log the full raw webhook payload (contains personal info — turn off when stable) |
+| `LOG_EMAILS` | `false` | Log outgoing email details including recipient, subject, and body (contains personal info — turn off when stable) |
 
 ## Test Suite
 
