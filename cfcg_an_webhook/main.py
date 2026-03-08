@@ -99,7 +99,7 @@ ZIP_DICT_FIELDS = ['region_key', 'email', 'nickname', 'cc_org']
 #   Queries, Surveys, Tags, Unique ID Lists, Wrappers
 OSDI_TYPE_CONFIG = {
     # type           type parsed    send_email
-    'attendance':  {'parsed': True,  'send_email': True },   # event RSVP
+    'attendance':  {'parsed': True,  'send_email': False },   # event RSVP
     'submission':  {'parsed': True,  'send_email': True },   # form submission
     'signature':   {'parsed': True,  'send_email': False},   # petition signature
     'donation':    {'parsed': True,  'send_email': False},   # donation
