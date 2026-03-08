@@ -27,10 +27,6 @@ from loguru import logger
 from sendgrid import SendGridAPIClient
 from google.cloud import secretmanager, storage
 
-# TODO: query AN to see if email already exists and if so, don't email, log as dup.  Create flag to turn this on/off.
-#  May want to send second email if someone signs up a second time because it coiuld be much later.
-# TODO: fix format if name blank
-
 # Load .env file when running locally (ignored in Cloud Run)
 load_dotenv()
 
@@ -76,7 +72,8 @@ ALWAYS_CC_LIST  = _parse_email_name_list(os.environ.get("ALWAYS_CC_LIST",  ""))
 ALWAYS_BCC_LIST = _parse_email_name_list(os.environ.get("ALWAYS_BCC_LIST", ""))
 
 CHECK_IDEMPOTENCY     = os.environ.get("CHECK_IDEMPOTENCY",     "false").lower() == "true"
-CHECK_ALREADY_EMAILED = os.environ.get("CHECK_ALREADY_EMAILED", "false").lower() == "true"
+CHECK_ALREADY_EMAILED   = os.environ.get("CHECK_ALREADY_EMAILED",   "false").lower() == "true"
+SEND_TO_EXISTING_EMAILS = os.environ.get("SEND_TO_EXISTING_EMAILS", "false").lower() == "true"
 UPDATE_GROUP_KEY      = os.environ.get("UPDATE_GROUP_KEY",      "false").lower() == "true"
 LOG_PAYLOADS          = os.environ.get("LOG_PAYLOADS",          "false").lower() == "true"
 LOG_EMAILS            = os.environ.get("LOG_EMAILS",            "false").lower() == "true"
@@ -495,6 +492,26 @@ def _send_notification(subject: str, message: str):
         logger.error(f"Failed to send notification email: {exc}")
 
 
+# ─── Action Network: Helpers ──────────────────────────────────────────────────
+
+def _find_person_in_an(email: str) -> bool:
+    """Return True if a person with this email already exists in Action Network."""
+    import requests as req
+    api_key = get_secret("AN_WEBHOOK_KEY")
+    url     = "https://actionnetwork.org/api/v2/people"
+    headers = {"OSDI-API-Token": api_key}
+    params  = {"filter": f"email_address eq '{email}'"}
+    try:
+        r = req.get(url, headers=headers, params=params, timeout=5)
+        r.raise_for_status()
+        data = r.json()
+        logger.debug(f"AN people lookup response for {email!r}: {data}")
+        return len(data.get("_embedded", {}).get("osdi:people", [])) > 0
+    except Exception as exc:
+        logger.warning(f"AN person lookup failed for {email!r}: {exc}")
+        return False
+
+
 # ─── Action Network: Update group_key ────────────────────────────────────────
 
 def update_group_key(group_key: str, person_id: str):
@@ -554,6 +571,13 @@ def process_recipient(recipient: dict) -> tuple:
     if not recipient.get("recipient_email"):
         logger.warning(f"No email address for person {recipient.get('person_id')} — skipping")
         return "Skipped (no email address)", 400
+
+    if CHECK_ALREADY_EMAILED:
+        if _find_person_in_an(recipient["recipient_email"]):
+            logger.info(f"Email {recipient['recipient_email']!r} already exists in Action Network system")
+            if not SEND_TO_EXISTING_EMAILS:
+                return "Skipped (email already in AN system)", 200
+            logger.info("SEND_TO_EXISTING_EMAILS=true — sending email anyway")
 
     json_type = recipient.get("json_type")
     type_config = OSDI_TYPE_CONFIG.get(json_type, {})

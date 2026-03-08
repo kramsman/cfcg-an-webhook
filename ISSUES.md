@@ -126,12 +126,84 @@ All feature flags default to `false` and are set in `.env` (local) or as Cloud R
 | `SEND_RECIPIENT_EMAILS` | `true` | Send welcome email to new signups |
 | `SEND_NOTIFICATION_EMAILS` | `false` | Send admin alerts on errors/warnings |
 | `CHECK_IDEMPOTENCY` | `false` | Skip duplicate webhook events |
-| `CHECK_ALREADY_EMAILED` | `false` | Skip people already emailed |
+| `CHECK_ALREADY_EMAILED` | `false` | Query AN to check if email already exists in system before sending |
+| `SEND_TO_EXISTING_EMAILS` | `false` | When `CHECK_ALREADY_EMAILED=true`, send email even if person already exists in AN |
 | `UPDATE_GROUP_KEY` | `false` | Write region key back to Action Network after emailing |
 | `LOG_PAYLOADS` | `false` | Log the full raw webhook payload (contains personal info — turn off when stable) |
 | `LOG_EMAILS` | `false` | Log outgoing email details including recipient, subject, and body (contains personal info — turn off when stable) |
 
 ## Test Suite
+
+### Testing CHECK_ALREADY_EMAILED locally (live AN lookup)
+
+1. In `.env`, set:
+   ```
+   CHECK_ALREADY_EMAILED=true
+   SEND_RECIPIENT_EMAILS=false    # keeps it safe — won't actually send email
+   ```
+
+2. Start the Flask server:
+   ```bash
+   uv run flask --app cfcg_an_webhook.main run
+   ```
+
+3. Send a test webhook payload containing an email you know already exists in your
+   Action Network account. Use **curl** or **Postman**:
+
+   **curl:**
+   ```bash
+   curl -X POST http://localhost:5000/webhook \
+     -H "Content-Type: application/json" \
+     -d @tests/payloads/attendance.json
+   ```
+   *(Edit the `address` field in `attendance.json` to a known AN email first.)*
+
+   **Postman:**
+   - Method: `POST`
+   - URL: `http://localhost:5000/webhook`
+   - Headers: `Content-Type: application/json`
+   - Body: raw → JSON — paste the payload below, replacing the email with a known AN address:
+   ```json
+   [
+     {
+       "idempotency_key": "test-001",
+       "action_network:sponsor": {"title": "CFCG Test"},
+       "osdi:attendance": {
+         "created_date": "2024-01-15T10:30:00Z",
+         "modified_date": "2024-01-15T10:30:00Z",
+         "_links": {
+           "osdi:person": {
+             "href": "https://actionnetwork.org/api/v2/people/test-person-id-123"
+           }
+         },
+         "person": {
+           "given_name": "Jane",
+           "family_name": "Smith",
+           "email_addresses": [
+             {"address": "known-an-email@example.com", "primary": true}
+           ],
+           "postal_addresses": [
+             {
+               "primary": true,
+               "address_lines": ["123 Main St"],
+               "locality": "Albany",
+               "region": "NY",
+               "postal_code": "12207"
+             }
+           ]
+         }
+       }
+     }
+   ]
+   ```
+
+4. Watch the Flask terminal. You should see:
+   - `Email '...' already exists in Action Network system` — found, skipped
+   - No such line — not found in AN
+   - `AN person lookup failed` — API/auth problem (check `AN_WEBHOOK_KEY` is in
+     Secret Manager and you're logged in via `gcloud auth application-default login`)
+
+---
 
 ### How payload JSON files are read and tested
 

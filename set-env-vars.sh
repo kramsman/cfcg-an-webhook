@@ -12,14 +12,15 @@ gcloud run services update cfcg-an-webhook \
 |GCS_BUCKET=cfcg-an-webhook-storage-trim-sunlight-489423-h3\
 |FROM_EMAIL=centerforcommonground.tech@gmail.com\
 |FROM_NAME=Center for Common Ground Team\
-|SEND_RECIPIENT_EMAILS=true\
+|SEND_RECIPIENT_EMAILS=false\
 |SEND_NOTIFICATION_EMAILS=true\
 |ALLOWED_RECIPIENT_EMAILS=rovmailtester@gmail.com,kramsman@yahoo.com\
 |NOTIFICATION_EMAIL_LIST=kramsman@yahoo.com\
 |ALWAYS_CC_LIST=\
 |ALWAYS_BCC_LIST=\
 |CHECK_IDEMPOTENCY=false\
-|CHECK_ALREADY_EMAILED=false\
+|CHECK_ALREADY_EMAILED=true\
+|SEND_TO_EXISTING_EMAILS=true\
 |UPDATE_GROUP_KEY=false\
 |LOG_PAYLOADS=true\
 |LOG_EMAILS=true" \
