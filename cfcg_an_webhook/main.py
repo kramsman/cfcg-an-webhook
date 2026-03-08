@@ -27,6 +27,11 @@ from loguru import logger
 from sendgrid import SendGridAPIClient
 from google.cloud import secretmanager, storage
 
+# TODO: query AN to see if email already exists and if so, don't email, log as dup.  Create flag to turn this on/off.
+#  May want to send second email if someone signs up a second time because it coiuld be much later.
+# TODO: fix format if name blank
+# #TODO remove spaces in email - here's your info we have
+
 # Load .env file when running locally (ignored in Cloud Run)
 load_dotenv()
 
@@ -347,25 +352,34 @@ def _build_welcome_email(r: dict) -> dict:
         ``sg.client.mail.send.post()``.
     """
     nl = "\n    - "
-    custom_text = nl.join(r.get("custom_fields") or ["(none)"])
+    custom_fields   = r.get("custom_fields") or []
+    extra_info_line = f"    Extra information:{nl}{nl.join(custom_fields)}" if custom_fields else None
+
+    # below uses one-line conditional expressions (Python's version of an if/else in a single line). It means:
+    # - If recipient_phone has a value → produce the string "    Phone: 555-1234 (Mobile)"
+    # - If recipient_phone is blank/missing → produce None
+    # Then later, the None entries get filtered out when building info_lines:
+    # "\n".join(line for line in [...] if line)
+    name_line    = "    " + f"{r['recipient_first_name']} {r['recipient_last_name']}".strip()
+    address_line = f"    {r['recipient_address']}" if r.get("recipient_address") else None
+    city_state   = ", ".join(filter(None, [r.get("recipient_city"), r.get("recipient_state")]))
+    city_line    = "    " + f"{city_state}  {r['recipient_zip_raw']}".strip() if city_state or r.get("recipient_zip_raw") else None
+    email_line   = f"    Email: {r['recipient_email']}" if r.get("recipient_email") else None
+    phone_line   = f"    Phone: {r['recipient_phone']} ({r['recipient_phone_type']})" if r.get("recipient_phone") else None
+    info_lines   = "\n".join(line for line in [name_line, address_line, city_line, email_line, phone_line, extra_info_line] if line)
 
     body = f"""Hi {r["recipient_first_name"]}!
 
-Thanks for your interest in Center for Common Ground's important work in nonpartisan voter outreach. Below you'll find information for your primary contact — your regional organizer — who can answer questions about our CFCG and Reclaim Our Vote campaigns. They can help you get started phone banking, postcarding, and/or texting voters of color in voter suppression states.
+Thanks for your interest in Center for Common Ground's important work in nonpartisan voter outreach. Below you'll find information for your primary contact who can help you get started phone banking, postcarding, and texting voters of color in voter suppression states.
 
     - Organizer name:  {r["org_name"]}
     - Organizer email: {r["org_email"]}
 
+
 Below is the information we have on file for you. Please let us know if anything needs updating:
 
-    {r["recipient_first_name"]} {r["recipient_last_name"]}
-    {r["recipient_address"]}
-    {r["recipient_city"]}, {r["recipient_state"]}  {r["recipient_zip_raw"]}
+{info_lines}
 
-    Email: {r["recipient_email"]}
-    Phone: {r["recipient_phone"]} ({r["recipient_phone_type"]})
-
-    Extra information:{nl}{custom_text}
 
 If you'd like to get more involved, please reach out to your organizer — they'd be happy to help! For issues that can't be addressed locally, contact rovgeneral@gmail.com.
 
