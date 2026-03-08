@@ -30,7 +30,6 @@ from google.cloud import secretmanager, storage
 # TODO: query AN to see if email already exists and if so, don't email, log as dup.  Create flag to turn this on/off.
 #  May want to send second email if someone signs up a second time because it coiuld be much later.
 # TODO: fix format if name blank
-# #TODO remove spaces in email - here's your info we have
 
 # Load .env file when running locally (ignored in Cloud Run)
 load_dotenv()
@@ -368,7 +367,8 @@ def _build_welcome_email(r: dict) -> dict:
     phone_line   = f"    Phone: {r['recipient_phone']} ({r['recipient_phone_type']})" if r.get("recipient_phone") else None
     info_lines   = "\n".join(line for line in [name_line, address_line, city_line, email_line, phone_line, extra_info_line] if line)
 
-    body = f"""Hi {r["recipient_first_name"]}!
+    first = r["recipient_first_name"]
+    body = f"""Hi{' ' + first if first else ''}!
 
 Thanks for your interest in Center for Common Ground's important work in nonpartisan voter outreach. Below you'll find information for your primary contact who can help you get started phone banking, postcarding, and texting voters of color in voter suppression states.
 
@@ -376,20 +376,21 @@ Thanks for your interest in Center for Common Ground's important work in nonpart
     - Organizer email: {r["org_email"]}
 
 
-Below is the information we have on file for you. Please let us know if anything needs updating:
+Here is the information we have on file for you. Please let us know if anything needs updating:
 
 {info_lines}
 
 
 If you'd like to get more involved, please reach out to your organizer — they'd be happy to help! For issues that can't be addressed locally, contact rovgeneral@gmail.com.
 
-Welcome to the CFCG community! Thousands of like-minded volunteers nationwide have taken action since 2018 to defend voting rights and equal representation for all Americans. Together, we can make democracy work.
+Thousands of like-minded volunteers nationwide have taken action since 2018 to defend voting rights for all Americans. Together, we can make democracy work.
 
 Sincerely,
 The Center For Common Ground Team
 """
 
-    subject = f"{r['recipient_first_name']} — Welcome to Center for Common Ground!"
+    name = r["recipient_first_name"]
+    subject = (f"{name} — " if name else "") + "Welcome to Center for Common Ground!"
 
     email_data = {
         "content": [{"type": "text/plain", "value": body}],
