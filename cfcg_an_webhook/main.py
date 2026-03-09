@@ -15,6 +15,9 @@ Local dev:
     5.  python test_local.py  (in a second terminal)
 """
 
+# TODO: increase font in email for org info, bold
+# TODO: test idempotency - mark log when incurred
+
 import json
 import os
 import pathlib

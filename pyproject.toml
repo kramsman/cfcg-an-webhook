@@ -2,7 +2,7 @@
 name = "cfcg-webhook"
 version = "0.1.0"
 description = "Action Network webhook receiver — sends welcome emails via SendGrid"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 
 dependencies = [
     "flask>=3.0",
@@ -13,6 +13,8 @@ dependencies = [
     "loguru>=0.7",
     "python-dotenv>=1.0",
     "requests>=2.31",
+    "uvbekutils",
+    "pandas>=2.0",
 ]
 
 [tool.uv]
@@ -20,6 +22,9 @@ dev-dependencies = [
     "pytest>=8.0",
     "pytest-dotenv>=0.5",
 ]
+
+[tool.uv.sources]
+uvbekutils = { git = "https://github.com/kramsman/uvbekutils.git" }
 
 [tool.pytest.ini_options]
 markers = [
