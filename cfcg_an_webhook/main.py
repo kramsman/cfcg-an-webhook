@@ -39,6 +39,7 @@ CLOUD_PROJECT_ID = os.environ["CLOUD_PROJECT_ID"]   # required - set in .env or 
 GCS_BUCKET       = os.environ.get("GCS_BUCKET", "")  # required in Cloud Run; not needed locally if file exists
 FROM_EMAIL       = os.environ.get("FROM_EMAIL", "centerforcommonground.tech@gmail.com")
 FROM_NAME        = os.environ.get("FROM_NAME",  "Center for Common Ground Team")
+LOGO_URL         = os.environ.get("LOGO_URL",   "")
 
 # Set SEND_RECIPIENT_EMAILS=false during testing to skip actual sends. Converts string in .env to boolean.
 SEND_RECIPIENT_EMAILS    = os.environ.get("SEND_RECIPIENT_EMAILS",    "true").lower()  == "true"
@@ -347,50 +348,49 @@ def _build_welcome_email(r: dict) -> dict:
         SendGrid mail send request body dict ready to pass to
         ``sg.client.mail.send.post()``.
     """
-    nl = "\n    - "
-    custom_fields   = r.get("custom_fields") or []
-    extra_info_line = f"    Extra information:{nl}{nl.join(custom_fields)}" if custom_fields else None
+    # Build info block as <br>-separated lines — skip any that are None
+    custom_fields = r.get("custom_fields") or []
+    name_item  = f"{r['recipient_first_name']} {r['recipient_last_name']}".strip()
+    city_state = ", ".join(filter(None, [r.get("recipient_city"), r.get("recipient_state")]))
+    city_item  = (f"{city_state}  {r['recipient_zip_raw']}".strip()
+                  if city_state or r.get("recipient_zip_raw") else None)
 
-    # below uses one-line conditional expressions (Python's version of an if/else in a single line). It means:
-    # - If recipient_phone has a value → produce the string "    Phone: 555-1234 (Mobile)"
-    # - If recipient_phone is blank/missing → produce None
-    # Then later, the None entries get filtered out when building info_lines:
-    # "\n".join(line for line in [...] if line)
-    name_line    = "    " + f"{r['recipient_first_name']} {r['recipient_last_name']}".strip()
-    address_line = f"    {r['recipient_address']}" if r.get("recipient_address") else None
-    city_state   = ", ".join(filter(None, [r.get("recipient_city"), r.get("recipient_state")]))
-    city_line    = "    " + f"{city_state}  {r['recipient_zip_raw']}".strip() if city_state or r.get("recipient_zip_raw") else None
-    email_line   = f"    Email: {r['recipient_email']}" if r.get("recipient_email") else None
-    phone_line   = f"    Phone: {r['recipient_phone']} ({r['recipient_phone_type']})" if r.get("recipient_phone") else None
-    info_lines   = "\n".join(line for line in [name_line, address_line, city_line, email_line, phone_line, extra_info_line] if line)
+    info_lines = [
+        name_item if name_item else None,
+        r.get("recipient_address"),
+        city_item,
+        f"Email: {r['recipient_email']}" if r.get("recipient_email") else None,
+        f"Phone: {r['recipient_phone']} ({r['recipient_phone_type']})" if r.get("recipient_phone") else None,
+    ]
+    if custom_fields:
+        info_lines += ["Extra information:"] + [f"&nbsp;&nbsp;&nbsp;&nbsp;- {cf}" for cf in custom_fields]
+    info_block = "<br>".join(f"&nbsp;&nbsp;&nbsp;&nbsp;{item}" for item in info_lines if item)
+
+    logo_tag = (f'<img src="{LOGO_URL}" alt="Center for Common Ground" '
+                f'style="max-width:300px;display:block;margin-bottom:16px;">'
+                if LOGO_URL else "")
 
     first = r["recipient_first_name"]
-    body = f"""Hi{' ' + first if first else ''}!
+    name  = r["recipient_first_name"]
+    body  = f"""<html><body style="font-family:Arial,sans-serif;font-size:12pt;color:#222;">
+{logo_tag}
+<p>Hi{' ' + first if first else ''}!</p>
+<p>Thanks for your interest in Center for Common Ground's important work in nonpartisan voter outreach. Below you'll find information for your primary contact who can help you get started phone banking, postcarding, and texting voters of color in voter suppression states.</p>
+<p>
+  Organizer name: {r["org_name"]}<br>
+  Organizer email: <a href="mailto:{r["org_email"]}">{r["org_email"]}</a>
+</p>
+<p>Here is the information we have on file for you. Please let us know if anything needs updating:</p>
+<p>{info_block}</p>
+<p>If you'd like to get more involved, please reach out to your organizer — they'd be happy to help! For issues that can't be addressed locally, contact <a href="mailto:rovgeneral@gmail.com">rovgeneral@gmail.com</a>.</p>
+<p>Thousands of like-minded volunteers nationwide have taken action since 2018 to defend voting rights for all Americans. Together, we can make democracy work.</p>
+<p>Sincerely,<br>The Center For Common Ground Team</p>
+</body></html>"""
 
-Thanks for your interest in Center for Common Ground's important work in nonpartisan voter outreach. Below you'll find information for your primary contact who can help you get started phone banking, postcarding, and texting voters of color in voter suppression states.
-
-    - Organizer name:  {r["org_name"]}
-    - Organizer email: {r["org_email"]}
-
-
-Here is the information we have on file for you. Please let us know if anything needs updating:
-
-{info_lines}
-
-
-If you'd like to get more involved, please reach out to your organizer — they'd be happy to help! For issues that can't be addressed locally, contact rovgeneral@gmail.com.
-
-Thousands of like-minded volunteers nationwide have taken action since 2018 to defend voting rights for all Americans. Together, we can make democracy work.
-
-Sincerely,
-The Center For Common Ground Team
-"""
-
-    name = r["recipient_first_name"]
     subject = (f"{name} — " if name else "") + "Welcome to Center for Common Ground!"
 
     email_data = {
-        "content": [{"type": "text/plain", "value": body}],
+        "content": [{"type": "text/html", "value": body}],
         "from":    {"email": FROM_EMAIL, "name": FROM_NAME},
         "personalizations": [{
             "subject": subject,

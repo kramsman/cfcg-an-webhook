@@ -12,7 +12,8 @@ gcloud run services update cfcg-an-webhook \
 |GCS_BUCKET=cfcg-an-webhook-storage-trim-sunlight-489423-h3\
 |FROM_EMAIL=centerforcommonground.tech@gmail.com\
 |FROM_NAME=Center for Common Ground Team\
-|SEND_RECIPIENT_EMAILS=false\
+|LOGO_URL=https://storage.googleapis.com/cfcg-an-webhook-storage-trim-sunlight-489423-h3/CFCG_logo.png\
+|SEND_RECIPIENT_EMAILS=true\
 |SEND_NOTIFICATION_EMAILS=true\
 |ALLOWED_RECIPIENT_EMAILS=rovmailtester@gmail.com,kramsman@yahoo.com\
 |NOTIFICATION_EMAIL_LIST=kramsman@yahoo.com\
