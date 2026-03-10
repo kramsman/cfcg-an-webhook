@@ -22,7 +22,7 @@ import json
 import os
 import pathlib
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 from flask import Flask, request
@@ -57,6 +57,9 @@ ALLOWED_RECIPIENT_EMAILS = [e.strip() for e in _allow_raw.split(",") if e.strip(
 
 _notif_raw = os.environ.get("NOTIFICATION_EMAIL_LIST", "")
 NOTIFICATION_EMAIL_LIST = [{"email": e.strip()} for e in _notif_raw.split(",") if e.strip()]
+
+_payload_notif_raw = os.environ.get("PAYLOAD_NOTIFICATION", "")
+PAYLOAD_NOTIFICATION_LIST = [{"email": e.strip()} for e in _payload_notif_raw.split(",") if e.strip()]
 
 def _parse_email_name_list(raw: str) -> list:
     """Parse 'email:name,email:name' string into a list of (email, name) tuples."""
@@ -380,7 +383,8 @@ def _build_welcome_email(r: dict) -> dict:
 <div style="max-width:600px;margin:0 auto;">
 {logo_tag}
 <p>Hi{' ' + first if first else ''}!</p>
-<p>Thanks for your interest in Center for Common Ground's important work in nonpartisan voter outreach. Below you'll find information for your primary contact who can help you get started phone banking, postcarding, and texting voters of color in voter suppression states.</p>
+<p>Thanks for your interest in Center for Common Ground's important work in nonpartisan voter outreach. Below you'll 
+find information for your primary contact who can help you get started postcarding, phone banking and texting voters of color in voter suppression states.</p>
 <div style="padding-left:20px;">
   <br>
   <span style="font-size:18px;">Organizer name: <strong>{r["org_name"]}</strong></span><br>
@@ -498,6 +502,27 @@ def _send_notification(subject: str, message: str):
         sg.client.mail.send.post(request_body=data)
     except Exception as exc:
         logger.error(f"Failed to send notification email: {exc}")
+
+
+def _send_payload_notification(payload):
+    """Send prettified payload JSON to PAYLOAD_NOTIFICATION_LIST on every webhook arrival."""
+    if not PAYLOAD_NOTIFICATION_LIST:
+        return
+    try:
+        api_key = get_secret("SENDGRID_API_KEY")
+        sg = SendGridAPIClient(api_key=api_key)
+        received_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        pretty_json = json.dumps(payload, indent=2)
+        body = f"<p>Received: {received_at}</p><pre>{pretty_json}</pre>"
+        data = {
+            "content": [{"type": "text/html", "value": body}],
+            "from": {"email": FROM_EMAIL, "name": FROM_NAME},
+            "personalizations": [{"to": PAYLOAD_NOTIFICATION_LIST}],
+            "subject": "Webhook - new payload",
+        }
+        sg.client.mail.send.post(request_body=data)
+    except Exception as exc:
+        logger.error(f"Failed to send payload notification email: {exc}")
 
 
 # ─── Action Network: Helpers ──────────────────────────────────────────────────
@@ -640,6 +665,8 @@ def webhook():
     if not payload or payload[0].get("action_network:sponsor") is None:
         logger.warning("Rejected: missing action_network:sponsor")
         return {"error": "Invalid Action Network payload"}, 400
+
+    _send_payload_notification(payload)
 
     if LOG_PAYLOADS:
         logger.info(f"[***** PAYLOAD DETAIL LOG] Raw webhook payload (contains personal info — "
