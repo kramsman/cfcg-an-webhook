@@ -384,14 +384,14 @@ def _build_welcome_email(r: dict) -> dict:
 {logo_tag}
 <p>Hi{' ' + first if first else ''}!</p>
 <p>Thanks for your interest in Center for Common Ground's important work in nonpartisan voter outreach. Below you'll 
-find information for your primary contact who can help you get started postcarding, phone banking and texting voters of color in voter suppression states.</p>
+find information for your primary contact who can help you get started postcarding, phone banking, and texting voters of color in voter suppression states.</p>
 <div style="padding-left:20px;">
   <br>
   <span style="font-size:18px;">Organizer name: <strong>{r["org_name"]}</strong></span><br>
   <span style="font-size:18px;">Organizer email: <a href="mailto:{r["org_email"]}"><strong>{r["org_email"]}</strong></a></span>
   <br><br>
 </div>
-<p>Here is the information we have on file for you. Please let us know if anything needs updating:</p>
+<p>Here is the information you entered. Please let us know if anything needs updating:</p>
 {info_block}
 <p>If you'd like to get more involved, please reach out to your organizer — they'd be happy to help! For issues that can't be addressed locally, contact <a href="mailto:rovgeneral@gmail.com">rovgeneral@gmail.com</a>.</p>
 <p>Thousands of like-minded volunteers nationwide have taken action since 2018 to defend voting rights for all Americans. Together, we can make democracy work.</p>
