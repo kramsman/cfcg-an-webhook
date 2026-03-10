@@ -113,7 +113,7 @@ class TestParseRecipient:
         assert result["recipient_last_name"] == "Smith"
 
 
-# ─── attach_organizer ─────────────────────────────────────────────────────────
+# ─── attach_organizer_info ─────────────────────────────────────────────────────────
 
 class TestAttachOrganizer:
 
@@ -126,7 +126,7 @@ class TestAttachOrganizer:
         print(f"  Parameters : recipient zip={recipient['recipient_zip']}")
         print(f"  Input      : ZIP_TO_ORG={minimal_zip_dict}")
 
-        error = main.attach_organizer(recipient)
+        error = main.attach_organizer_info(recipient)
 
         print(f"  Output     : error={error!r}, org_email={recipient.get('org_email')!r}, "
               f"org_name={recipient.get('org_name')!r}, reg_key={recipient.get('reg_key')!r}")
@@ -146,7 +146,7 @@ class TestAttachOrganizer:
         print(f"  Parameters : recipient zip={recipient['recipient_zip']}")
         print(f"  Input      : ZIP_TO_ORG keys={list(minimal_zip_dict.keys())}")
 
-        error = main.attach_organizer(recipient)
+        error = main.attach_organizer_info(recipient)
 
         print(f"  Output     : error={error!r}")
 
@@ -265,7 +265,7 @@ class TestProcessRecipient:
     @pytest.mark.integration
     def test_full_pipeline_with_mock_sendgrid(self, sample_payload, minimal_zip_dict, monkeypatch):
         """
-        Integration: runs parse → attach_organizer → _send_welcome_email as a pipeline.
+        Integration: runs parse → attach_organizer_info → _send_welcome_email as a pipeline.
         Mocks the SendGrid API call but exercises all other real code paths.
         """
         monkeypatch.setattr(main, "ZIP_TO_ORG", minimal_zip_dict)

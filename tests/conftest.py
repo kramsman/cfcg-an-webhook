@@ -210,7 +210,7 @@ def parsed_recipient(sample_payload, minimal_zip_dict, monkeypatch):
     monkeypatch.setattr(main, "ZIP_TO_ORG", minimal_zip_dict)
 
     recipient = main.parse_recipient(sample_payload[0])
-    main.attach_organizer(recipient)
+    main.attach_organizer_info(recipient)
     return recipient
 
 

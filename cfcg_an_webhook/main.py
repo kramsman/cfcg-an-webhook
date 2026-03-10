@@ -242,10 +242,10 @@ def parse_recipient(record: dict) -> dict:
         logger.warning(f"Unknown osdi type: {out['json_type']!r} — not in OSDI_TYPE_CONFIG. "
                        f"Add it to the registry if this type should be handled.")
     elif out["json_type"] and not OSDI_TYPE_CONFIG[out["json_type"]]["parsed"]:
-        logger.info(f"osdi type {out['json_type']!r} is known but not yet verified (parsed=False)")
+        logger.info(f"osdi type {out['json_type']!r} is not coded (parsed=False)")
 
     if osdi_data is None:
-        logger.warning("No osdi: key found in webhook record")
+        logger.warning("Bad osdi data: No 'osdi:' found in payload")
         return out
 
     # Person ID from _links
@@ -298,14 +298,14 @@ def parse_recipient(record: dict) -> dict:
 
     out["recipient_zip"] = to_zip5(out["recipient_zip_raw"])
 
-    logger.debug(f"Parsed: {out['recipient_first_name']} {out['recipient_last_name']} "
+    logger.debug(f"Payload parsed: {out['recipient_first_name']} {out['recipient_last_name']} "
                  f"<{out['recipient_email']}> zip={out['recipient_zip']}")
     return out
 
 
 # ─── Organizer Lookup ─────────────────────────────────────────────────────────
 
-def attach_organizer(recipient: dict) -> str:
+def attach_organizer_info(recipient: dict) -> str:
     """Look up organizer info by zip and add fields to the recipient dict.
 
     Adds ``org_email``, ``org_name``, ``reg_key``, and ``cc_org`` to the
@@ -347,7 +347,7 @@ def _build_welcome_email(r: dict) -> dict:
 
     Args:
         r: Recipient dict with organizer fields attached (output of
-            ``attach_organizer()``). Must contain ``recipient_first_name``,
+            ``attach_organizer_info()``). Must contain ``recipient_first_name``,
             ``recipient_email``, ``org_name``, ``org_email``, and ``cc_org``.
 
     Returns:
@@ -455,7 +455,7 @@ def _send_welcome_email(recipient: dict) -> tuple:
     to_email = recipient.get("recipient_email", "")
 
     if ALLOWED_RECIPIENT_EMAILS and to_email not in ALLOWED_RECIPIENT_EMAILS:
-        logger.info(f"Would have sent (not in ALLOWED_RECIPIENT_EMAILS): {to_email}")
+        logger.info(f"Not in ALLOWED_RECIPIENT_EMAILS, would have sent: {to_email}")
         return "Would have sent — not in allow-list", 200
 
     api_key    = get_secret("SENDGRID_API_KEY")
@@ -472,10 +472,10 @@ def _send_welcome_email(recipient: dict) -> tuple:
             f"Subject={p.get('subject')!r} Body={body!r}"
         )
 
-    logger.info(f"Sending welcome email → {to_email}")
+    logger.info(f"Sending welcome email to {to_email}")
     response = sg.client.mail.send.post(request_body=email_data)
     status   = response.status_code
-    logger.info(f"SendGrid status: {status}")
+    logger.info(f"SendGrid status of send: {status}")
     return f"Email sent to {to_email}", status
 
 
@@ -501,7 +501,7 @@ def _send_notification(subject: str, message: str):
         }
         sg.client.mail.send.post(request_body=data)
     except Exception as exc:
-        logger.error(f"Failed to send notification email: {exc}")
+        logger.error(f"*Exception - Failed to send notification email: {exc}")
 
 
 def _send_payload_notification(payload):
@@ -522,7 +522,7 @@ def _send_payload_notification(payload):
         }
         sg.client.mail.send.post(request_body=data)
     except Exception as exc:
-        logger.error(f"Failed to send payload notification email: {exc}")
+        logger.error(f"* Exception-Failed to send payload notification email: {exc}")
 
 
 # ─── Action Network: Helpers ──────────────────────────────────────────────────
@@ -538,10 +538,10 @@ def _find_person_in_an(email: str) -> bool:
         r = req.get(url, headers=headers, params=params, timeout=5)
         r.raise_for_status()
         data = r.json()
-        logger.debug(f"AN people lookup response for {email!r}: {data}")
+        logger.debug(f"GET AN people lookup response for {email!r}: {data}")
         return len(data.get("_embedded", {}).get("osdi:people", [])) > 0
     except Exception as exc:
-        logger.warning(f"AN person lookup failed for {email!r}: {exc}")
+        logger.warning(f"* Exception-AN person lookup failed for {email!r}: {exc}")
         return False
 
 
@@ -585,7 +585,7 @@ def process_recipient(recipient: dict) -> tuple:
     """Run the full pipeline for one recipient.
 
     Steps:
-        1. Look up organizer by zip (``attach_organizer``).
+        1. Look up organizer by zip (``attach_organizer_info``).
         2. Send welcome email (``_send_welcome_email``).
         3. Optionally update group_key in Action Network (``update_group_key``),
            controlled by the ``UPDATE_GROUP_KEY`` flag.
@@ -596,9 +596,9 @@ def process_recipient(recipient: dict) -> tuple:
     Returns:
         Tuple of ``(message, http_status_code)``.
     """
-    error = attach_organizer(recipient)
+    error = attach_organizer_info(recipient)
     if error:
-        logger.warning(f"Skipping {recipient.get('person_id')}: error={error!r}")
+        logger.warning(f"Could not find Org info {recipient.get('person_id')}: error={error!r}")
         return f"Skipped (error: {error})", 400
 
     if not recipient.get("recipient_email"):
@@ -607,10 +607,10 @@ def process_recipient(recipient: dict) -> tuple:
 
     if CHECK_ALREADY_EMAILED:
         if _find_person_in_an(recipient["recipient_email"]):
-            logger.info(f"Email {recipient['recipient_email']!r} already exists in Action Network system")
+            logger.info(f"Email already exists for {recipient['recipient_email']!r} in Action Network system")
             if not SEND_TO_EXISTING_EMAILS:
-                return "Skipped (email already in AN system)", 200
-            logger.info("SEND_TO_EXISTING_EMAILS=true — sending email anyway")
+                return "Flag to skip existing emails (email already in AN system)", 200
+            logger.info("SEND_TO_EXISTING_EMAILS=true — so sending to dup anyway")
 
     json_type = recipient.get("json_type")
     type_config = OSDI_TYPE_CONFIG.get(json_type, {})
@@ -626,11 +626,11 @@ def process_recipient(recipient: dict) -> tuple:
         return f"Skipped (unknown type {json_type!r})", 200
 
     if not type_config.get("send_email", False):
-        logger.info(f"osdi type {json_type!r} is configured send_email=False — skipping")
+        logger.info(f"osdi type {json_type!r} send_email=False, is configured but skipping")
         return f"Skipped (send_email=False for type {json_type!r})", 200
 
     if not SEND_RECIPIENT_EMAILS:
-        logger.info(f"Email disabled; skipping {recipient.get('recipient_email')}")
+        logger.info(f"SEND_RECIPIENT_EMAILS: {SEND_RECIPIENT_EMAILS}; skipping {recipient.get('recipient_email')}")
         return "Email sending disabled", 200
 
     msg, status = _send_welcome_email(recipient)
@@ -639,7 +639,7 @@ def process_recipient(recipient: dict) -> tuple:
         try:
             update_group_key(recipient["reg_key"], recipient["person_id"])
         except Exception as exc:
-            logger.error(f"group_key update failed (non-fatal): {exc}")
+            logger.error(f"* Exception-group_key update failed (non-fatal): {exc}")
 
     return msg, status
 
@@ -659,11 +659,11 @@ def webhook():
     payload = request.get_json(silent=False)
 
     if not isinstance(payload, list):
-        logger.warning(f"Rejected: payload is {type(payload).__name__}, expected list")
+        logger.warning(f"Payload rejected: type- {type(payload).__name__}, expected list")
         return {"error": "Expected a JSON array"}, 400
 
     if not payload or payload[0].get("action_network:sponsor") is None:
-        logger.warning("Rejected: missing action_network:sponsor")
+        logger.warning("Payload rejected: missing action_network:sponsor")
         return {"error": "Invalid Action Network payload"}, 400
 
     _send_payload_notification(payload)
@@ -682,7 +682,7 @@ def webhook():
             "result":    msg,
             "status":    status,
         })
-        logger.info(f"Processed {recipient.get('person_id')}: {msg} ({status})")
+        logger.info(f"Payload processed {recipient.get('person_id')}: {msg} ({status})")
 
     return {"processed": len(results), "results": results}, 200
 
