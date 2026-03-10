@@ -366,8 +366,9 @@ def _build_welcome_email(r: dict) -> dict:
         f"Phone: {r['recipient_phone']} ({r['recipient_phone_type']})" if r.get("recipient_phone") else None,
     ]
     if custom_fields:
-        info_lines += ["Extra information:"] + [f"&nbsp;&nbsp;&nbsp;&nbsp;- {cf}" for cf in custom_fields]
-    info_block = "<br>".join(f"&nbsp;&nbsp;&nbsp;&nbsp;{item}" for item in info_lines if item)
+        info_lines += [f"Extra information: {cf}" for cf in custom_fields]
+    items     = "".join(f"<li>{item}</li>" for item in info_lines if item)
+    info_block = f"<ul>{items}</ul>"
 
     logo_tag = (f'<img src="{LOGO_URL}" alt="Center for Common Ground" '
                 f'style="max-width:300px;display:block;margin-bottom:16px;">'
@@ -376,18 +377,22 @@ def _build_welcome_email(r: dict) -> dict:
     first = r["recipient_first_name"]
     name  = r["recipient_first_name"]
     body  = f"""<html><body style="font-family:Arial,sans-serif;font-size:12pt;color:#222;">
+<div style="max-width:600px;margin:0 auto;">
 {logo_tag}
 <p>Hi{' ' + first if first else ''}!</p>
 <p>Thanks for your interest in Center for Common Ground's important work in nonpartisan voter outreach. Below you'll find information for your primary contact who can help you get started phone banking, postcarding, and texting voters of color in voter suppression states.</p>
-<p>
-  Organizer name: {r["org_name"]}<br>
-  Organizer email: <a href="mailto:{r["org_email"]}">{r["org_email"]}</a>
-</p>
+<div style="padding-left:20px;">
+  <br>
+  <span style="font-size:18px;">Organizer name: <strong>{r["org_name"]}</strong></span><br>
+  <span style="font-size:18px;">Organizer email: <a href="mailto:{r["org_email"]}"><strong>{r["org_email"]}</strong></a></span>
+  <br><br>
+</div>
 <p>Here is the information we have on file for you. Please let us know if anything needs updating:</p>
-<p>{info_block}</p>
+{info_block}
 <p>If you'd like to get more involved, please reach out to your organizer — they'd be happy to help! For issues that can't be addressed locally, contact <a href="mailto:rovgeneral@gmail.com">rovgeneral@gmail.com</a>.</p>
 <p>Thousands of like-minded volunteers nationwide have taken action since 2018 to defend voting rights for all Americans. Together, we can make democracy work.</p>
 <p>Sincerely,<br>The Center For Common Ground Team</p>
+</div>
 </body></html>"""
 
     subject = (f"{name} — " if name else "") + "Welcome to Center for Common Ground!"

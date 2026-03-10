@@ -180,3 +180,7 @@ cython_debug/
 /an_report_all_people_counts-2026-03-09-01-54.csv
 /one_record_action_network_export.csv
 /an_report_pull-all-people-include-address-and-group_key_2026-03-09-16-14.csv
+/.idea/cfcg-an-webhook.iml
+/.idea/modules.xml
+/.idea/inspectionProfiles/profiles_settings.xml
+/.idea/inspectionProfiles/Project_Default.xml
