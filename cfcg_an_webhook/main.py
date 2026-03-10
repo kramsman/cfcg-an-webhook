@@ -152,11 +152,11 @@ def load_zip_dict() -> dict:
         ValueError: If the loaded file is missing any expected fields.
     """
     if ZIP_DICT_PATH:
-        logger.info(f"Loading zip lookup table from local file {ZIP_DICT_PATH}")
+        logger.info(f"Loading zip lookup table ZIP_TO_ORG from local file {ZIP_DICT_PATH}")
         with open(ZIP_DICT_PATH) as f:
             data = json.load(f)
     else:
-        logger.info(f"Loading zip lookup table from GCS bucket {GCS_BUCKET}")
+        logger.info(f"Loading zip lookup table ZIP_TO_ORG from GCS bucket {GCS_BUCKET}")
         gcs_client = storage.Client()
         blob = gcs_client.bucket(GCS_BUCKET).blob("zip_dict.json")
         data = json.loads(blob.download_as_text())
@@ -245,7 +245,7 @@ def parse_recipient(record: dict) -> dict:
         logger.info(f"osdi type {out['json_type']!r} is not coded (parsed=False)")
 
     if osdi_data is None:
-        logger.warning("Bad osdi data: No 'osdi:' found in payload")
+        logger.warning("Bad osdi data: No 'osdi:' string found in payload")
         return out
 
     # Person ID from _links
@@ -298,7 +298,7 @@ def parse_recipient(record: dict) -> dict:
 
     out["recipient_zip"] = to_zip5(out["recipient_zip_raw"])
 
-    logger.debug(f"Payload parsed: {out['recipient_first_name']} {out['recipient_last_name']} "
+    logger.debug(f"Payload parsed, values are: {out['recipient_first_name']} {out['recipient_last_name']} "
                  f"<{out['recipient_email']}> zip={out['recipient_zip']}")
     return out
 
@@ -326,12 +326,13 @@ def attach_organizer_info(recipient: dict) -> str:
 
     if entry is None:
         msg = (f"Zip {zip_code!r} (raw: {recipient.get('recipient_zip_raw')!r}) "
-               f"not found for {recipient.get('recipient_first_name')} "
+               f"not found in zip_dict for {recipient.get('recipient_first_name')} "
                f"{recipient.get('recipient_last_name')} <{recipient.get('recipient_email')}>")
         logger.warning(msg)
         if SEND_NOTIFICATION_EMAILS:
-            _send_notification("Zip not found in lookup table", msg)
-        return "Z"
+            _send_notification(f"SEND_NOTIFICATION_EMAILS={SEND_NOTIFICATION_EMAILS} but zip not found in lookup "
+                               f"table", msg)
+        return "Zip not in zip_dict"
 
     recipient["org_email"] = entry["email"]
     recipient["org_name"]  = entry["nickname"]
@@ -472,7 +473,7 @@ def _send_welcome_email(recipient: dict) -> tuple:
             f"Subject={p.get('subject')!r} Body={body!r}"
         )
 
-    logger.info(f"Sending welcome email to {to_email}")
+    logger.info(f"Sendgrid sending welcome email to {to_email}")
     response = sg.client.mail.send.post(request_body=email_data)
     status   = response.status_code
     logger.info(f"SendGrid status of send: {status}")
@@ -541,7 +542,7 @@ def _find_person_in_an(email: str) -> bool:
         logger.debug(f"GET AN people lookup response for {email!r}: {data}")
         return len(data.get("_embedded", {}).get("osdi:people", [])) > 0
     except Exception as exc:
-        logger.warning(f"* Exception-AN person lookup failed for {email!r}: {exc}")
+        logger.warning(f"*Exception-AN person lookup failed for {email!r}: {exc}")
         return False
 
 
