@@ -15,9 +15,6 @@ Local dev:
     5.  python test_local.py  (in a second terminal)
 """
 
-# TODO: increase font in email for org info, bold
-# TODO: test idempotency - mark log when incurred
-
 import json
 import os
 import pathlib
@@ -79,6 +76,9 @@ ALWAYS_CC_LIST  = _parse_email_name_list(os.environ.get("ALWAYS_CC_LIST",  ""))
 ALWAYS_BCC_LIST = _parse_email_name_list(os.environ.get("ALWAYS_BCC_LIST", ""))
 
 CHECK_IDEMPOTENCY     = os.environ.get("CHECK_IDEMPOTENCY",     "false").lower() == "true"
+_processed_keys: set = set()   # in-memory idempotency store; no cleanup needed — the set is tiny for
+                               # low-traffic use, and clears automatically when Cloud Run scales to zero
+                               # (after ~15 min of inactivity) or on every redeploy.
 CHECK_ALREADY_EMAILED   = os.environ.get("CHECK_ALREADY_EMAILED",   "false").lower() == "true"
 SEND_TO_EXISTING_EMAILS = os.environ.get("SEND_TO_EXISTING_EMAILS", "false").lower() == "true"
 UPDATE_GROUP_KEY      = os.environ.get("UPDATE_GROUP_KEY",      "false").lower() == "true"
@@ -670,12 +670,27 @@ def webhook():
     _send_payload_notification(payload)
 
     if LOG_PAYLOADS:
-        logger.info(f"[***** PAYLOAD DETAIL LOG] Raw webhook payload (contains personal info — "
+        logger.warning(f"[***** PAYLOAD DETAIL LOG] Raw webhook payload (contains personal info — "
                     f"disable LOG_PAYLOADS when stable): {json.dumps(payload)}")
 
     results = []
     for record in payload:
         recipient = parse_recipient(record)
+
+        if CHECK_IDEMPOTENCY:
+            ikey = recipient.get("idempotency_key")
+            if ikey and ikey in _processed_keys:
+                logger.warning(f"Duplicate payload — idempotency_key {ikey!r} for {recipient.get('recipient_email')} already processed, skipping")
+                results.append({
+                    "person_id": recipient.get("person_id"),
+                    "email":     recipient.get("recipient_email"),
+                    "result":    "Duplicate (skipped)",
+                    "status":    200,
+                })
+                continue
+            if ikey:
+                _processed_keys.add(ikey)
+
         msg, status = process_recipient(recipient)
         results.append({
             "person_id": recipient.get("person_id"),

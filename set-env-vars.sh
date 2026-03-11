@@ -20,9 +20,10 @@ gcloud run services update cfcg-an-webhook \
 |PAYLOAD_NOTIFICATION=kramsman@yahoo.com\
 |ALWAYS_CC_LIST=\
 |ALWAYS_BCC_LIST=\
-|CHECK_IDEMPOTENCY=false\
+|CHECK_IDEMPOTENCY=true\
 |CHECK_ALREADY_EMAILED=true\
-|SEND_TO_EXISTING_EMAILS=true\
+|SEND_TO_EXISTING_EMAILS=true\clear
+
 |UPDATE_GROUP_KEY=false\
 |LOG_PAYLOADS=true\
 |LOG_EMAILS=true" \
