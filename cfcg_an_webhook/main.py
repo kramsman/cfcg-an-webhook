@@ -298,8 +298,8 @@ def parse_recipient(record: dict) -> dict:
 
     out["recipient_zip"] = to_zip5(out["recipient_zip_raw"])
 
-    logger.debug(f"Payload parsed, values are: {out['recipient_first_name']} {out['recipient_last_name']} "
-                 f"<{out['recipient_email']}> zip={out['recipient_zip']}")
+    logger.debug(f"Payload parsed: {out['recipient_first_name']} {out['recipient_last_name']} "
+                 f"<{out['recipient_email']}> idempotency={out['idempotency_key']}  zip={out['recipient_zip']}")
     return out
 
 
@@ -370,8 +370,9 @@ def _build_welcome_email(r: dict) -> dict:
         f"Phone: {r['recipient_phone']} ({r['recipient_phone_type']})" if r.get("recipient_phone") else None,
     ]
     if custom_fields:
-        info_lines += [f"Extra information: {cf}" for cf in custom_fields]
-    items     = "".join(f"<li>{item}</li>" for item in info_lines if item)
+        sub_items = "".join(f"<li>{cf}</li>" for cf in custom_fields)
+        info_lines.append(f"Extra information:<ul>{sub_items}</ul>")
+    items      = "".join(f"<li>{item}</li>" for item in info_lines if item)
     info_block = f"<ul>{items}</ul>"
 
     logo_tag = (f'<img src="{LOGO_URL}" alt="Center for Common Ground" '
@@ -680,7 +681,8 @@ def webhook():
         if CHECK_IDEMPOTENCY:
             ikey = recipient.get("idempotency_key")
             if ikey and ikey in _processed_keys:
-                logger.warning(f"Duplicate payload — idempotency_key {ikey!r} for {recipient.get('recipient_email')} already processed, skipping")
+                logger.warning(f"** Duplicate payload — idempotency_key {ikey!r} for"
+                               f" {recipient.get('recipient_email')} already processed, skipping")
                 results.append({
                     "person_id": recipient.get("person_id"),
                     "email":     recipient.get("recipient_email"),
