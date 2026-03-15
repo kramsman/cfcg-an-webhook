@@ -18,6 +18,7 @@ Local dev:
 import json
 import os
 import pathlib
+import threading
 import time
 from datetime import datetime, timezone
 
@@ -83,6 +84,9 @@ CHECK_IDEMPOTENCY     = os.environ.get("CHECK_IDEMPOTENCY",     "false").lower()
 _processed_keys: set = set()   # in-memory idempotency store; no cleanup needed — the set is tiny for
                                # low-traffic use, and clears automatically when Cloud Run scales to zero
                                # (after ~15 min of inactivity) or on every redeploy.
+
+_transaction_buffer: dict = {}  # txn_id -> {"recipients": [parsed_dict, ...], "first_seen": float}
+_buffer_lock = threading.Lock()
 CHECK_ALREADY_EMAILED   = os.environ.get("CHECK_ALREADY_EMAILED",   "false").lower() == "true"
 SEND_TO_EXISTING_EMAILS = os.environ.get("SEND_TO_EXISTING_EMAILS", "false").lower() == "true"
 UPDATE_GROUP_KEY      = os.environ.get("UPDATE_GROUP_KEY",      "false").lower() == "true"
@@ -95,6 +99,10 @@ APPEND_TO_SHEET = os.environ.get("APPEND_TO_SHEET", "false").lower() == "true"
 GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")
 SHEET_TAB       = "AN-JAN5-2026-START"   # sheet tab name — update at start of each year
 logger.debug(f"APPEND_TO_SHEET={APPEND_TO_SHEET} GOOGLE_SHEET_ID={'(set)' if GOOGLE_SHEET_ID else '(empty)'}")
+
+REMOVE_MULTI_IDENTIFIERS   = os.environ.get("REMOVE_MULTI_IDENTIFIERS",   "true").lower()  == "true"
+TRANSACTION_WINDOW_SECONDS = float(os.environ.get("TRANSACTION_WINDOW_SECONDS", "10"))
+logger.debug(f"REMOVE_MULTI_IDENTIFIERS= {REMOVE_MULTI_IDENTIFIERS}  TRANSACTION_WINDOW_SECONDS= {TRANSACTION_WINDOW_SECONDS}")
 
 # Fields read from zip_dict.json — must match org_fields passed to
 # create_organizer_info_by_zip_file() in the cfcg-reports generator project.
@@ -219,6 +227,158 @@ def to_zip5(raw_zip: str) -> int:
         return num if num <= 99999 else 0
     except ValueError:
         return 0
+
+# ─── Transaction Grouping ─────────────────────────────────────────────────────
+
+def _get_transaction_id(record: dict) -> str | None:
+    """Extract the Action Network transaction UUID from a raw webhook record.
+
+    Looks inside the osdi:* object for an identifier like
+    ``"action_network:32b6df18-..."``. Returns only the UUID portion.
+
+    Args:
+        record: One raw record from the Action Network webhook JSON array.
+
+    Returns:
+        Transaction UUID string, or None if no action_network identifier found.
+    """
+    for key, val in record.items():
+        if key.startswith("osdi:") and isinstance(val, dict):
+            for ident in (val.get("identifiers") or []):
+                if ident.startswith("action_network:"):
+                    return ident.split(":", 1)[1]
+    return None
+
+
+def _merge_recipients(recipients: list, transaction_id: str) -> dict:
+    """Merge multiple parsed recipient dicts from one transaction into one combined dict.
+
+    Args:
+        recipients: List of parsed recipient dicts (output of ``parse_recipient()``).
+        transaction_id: Shared transaction UUID used as the merged idempotency key.
+
+    Returns:
+        Single merged recipient dict.
+    """
+    merged = dict(recipients[0])
+
+    person_fields = [
+        "recipient_first_name", "recipient_last_name", "recipient_email",
+        "recipient_phone", "recipient_phone_type", "recipient_address",
+        "recipient_city", "recipient_state", "recipient_state_abbrev",
+        "recipient_zip_raw", "recipient_zip", "recipient_organization",
+        "person_id", "created_date", "modified_date",
+    ]
+    for r in recipients[1:]:
+        for field in person_fields:
+            if not merged.get(field) and r.get(field):
+                merged[field] = r[field]
+
+    all_tags = []
+    for r in recipients:
+        for tag in (r.get("recipient_tags") or "").split(", "):
+            if tag and tag not in all_tags:
+                all_tags.append(tag)
+    merged["recipient_tags"] = ", ".join(all_tags)
+
+    merged_cf_dict = {}
+    for r in recipients:
+        merged_cf_dict.update(r.get("custom_fields_dict") or {})
+    merged["custom_fields_dict"] = merged_cf_dict
+    merged["custom_fields"] = [
+        f"{k}: {'Yes' if v == '1' else v}"
+        for k, v in merged_cf_dict.items()
+    ]
+
+    dates = [r["created_date"] for r in recipients if r.get("created_date")]
+    if dates:
+        merged["created_date"] = min(dates)
+
+    for r in recipients:
+        jt = r.get("json_type")
+        if jt and OSDI_TYPE_CONFIG.get(jt, {}).get("send_email", False):
+            merged["json_type"] = jt
+            break
+
+    merged["idempotency_key"] = transaction_id
+
+    types_combined = [r.get("json_type") for r in recipients]
+    logger.info(
+        f"[TRANSACTION] Combined {len(recipients)} payloads into one record "
+        f"for {merged.get('recipient_email')!r} — "
+        f"types combined: {types_combined} → processing as type={merged.get('json_type')!r} "
+        f"(transaction {transaction_id!r})"
+    )
+    return merged
+
+
+def _drain_expired_buffer():
+    """Process and remove all expired transaction buffer entries.
+
+    Called by the background drain thread and at the start of each webhook request.
+    For each expired group: if any type has send_email=True, merge into one record
+    and process; otherwise process each record individually.
+    """
+    now = time.time()
+    with _buffer_lock:
+        expired_ids = [
+            tid for tid, entry in _transaction_buffer.items()
+            if now - entry["first_seen"] >= TRANSACTION_WINDOW_SECONDS
+        ]
+        groups = {tid: _transaction_buffer.pop(tid) for tid in expired_ids}
+
+    for tid, entry in groups.items():
+        recipients = entry["recipients"]
+        any_sends_email = any(
+            OSDI_TYPE_CONFIG.get(r.get("json_type"), {}).get("send_email", False)
+            for r in recipients
+        )
+        if len(recipients) > 1:
+            types = [r.get("json_type") for r in recipients]
+            if any_sends_email:
+                logger.info(
+                    f"[TRANSACTION] Processing grouped transaction {tid!r}: "
+                    f"{len(recipients)} payloads ({types}) → merging into one record "
+                    f"(email will be sent)"
+                )
+                to_process = [_merge_recipients(recipients, tid)]
+            else:
+                logger.info(
+                    f"[TRANSACTION] Processing grouped transaction {tid!r}: "
+                    f"{len(recipients)} payloads ({types}) — no type sends email, "
+                    f"processing each individually"
+                )
+                to_process = recipients
+        else:
+            logger.info(
+                f"[TRANSACTION] Processing single-record transaction {tid!r}: "
+                f"type={recipients[0].get('json_type')!r} — no companion arrived within window"
+            )
+            to_process = recipients
+
+        for recipient in to_process:
+            # Idempotency already marked at arrival time — no re-check needed here
+            msg, status = process_recipient(recipient)
+            logger.info(f"[BUFFER] Processed {recipient.get('person_id')}: {msg} ({status})")
+
+
+def _start_buffer_drain_thread():
+    """Start a daemon thread that drains expired transaction buffer entries periodically."""
+    def _loop():
+        while True:
+            time.sleep(TRANSACTION_WINDOW_SECONDS)
+            try:
+                _drain_expired_buffer()
+            except Exception as exc:
+                logger.error(f"Buffer drain thread error: {exc}")
+
+    threading.Thread(target=_loop, daemon=True, name="buffer-drain").start()
+    logger.info(f"Buffer drain thread started (window={TRANSACTION_WINDOW_SECONDS}s)")
+
+
+if REMOVE_MULTI_IDENTIFIERS:
+    _start_buffer_drain_thread()
+
 
 # ─── Action Network Payload Parsing ───────────────────────────────────────────
 
@@ -773,7 +933,56 @@ def webhook():
                     f"disable LOG_PAYLOADS when stable): {json.dumps(payload)}")
 
     results = []
+
+    # Drain any expired buffer entries before processing the new payload
+    if REMOVE_MULTI_IDENTIFIERS:
+        _drain_expired_buffer()
+
     for record in payload:
+        if REMOVE_MULTI_IDENTIFIERS:
+            tid = _get_transaction_id(record)
+            if tid is not None:
+                recipient = parse_recipient(record)
+
+                # 1. Check duplicate FIRST — before buffering
+                if CHECK_IDEMPOTENCY:
+                    ikey = recipient.get("idempotency_key")
+                    if ikey and ikey in _processed_keys:
+                        logger.warning(f"** Duplicate payload — idempotency_key {ikey!r} for"
+                                       f" {recipient.get('recipient_email')} already in buffer or processed, skipping")
+                        results.append({
+                            "person_id": recipient.get("person_id"),
+                            "email":     recipient.get("recipient_email"),
+                            "result":    "Duplicate (skipped)",
+                            "status":    200,
+                        })
+                        continue
+                    # 2. Mark processed BEFORE returning 200 — blocks AN retries from re-buffering
+                    if ikey:
+                        _processed_keys.add(ikey)
+
+                # 3. Buffer the record
+                with _buffer_lock:
+                    if tid not in _transaction_buffer:
+                        _transaction_buffer[tid] = {"recipients": [recipient],
+                                                    "first_seen": time.time()}
+                        logger.info(f"Buffered new transaction {tid!r} for "
+                                    f"{recipient.get('recipient_email')}")
+                    else:
+                        _transaction_buffer[tid]["recipients"].append(recipient)
+                        logger.info(f"Added to existing transaction buffer {tid!r} "
+                                    f"(now {len(_transaction_buffer[tid]['recipients'])} records)")
+
+                # 4. Return 200 immediately — heavy work happens in drain thread
+                results.append({
+                    "person_id": recipient.get("person_id"),
+                    "email":     recipient.get("recipient_email"),
+                    "result":    "Buffered (transaction window)",
+                    "status":    200,
+                })
+                continue   # drain thread handles processing after window expires
+
+        # Non-buffered path (no identifier, or REMOVE_MULTI_IDENTIFIERS=False)
         recipient = parse_recipient(record)
 
         if CHECK_IDEMPOTENCY:

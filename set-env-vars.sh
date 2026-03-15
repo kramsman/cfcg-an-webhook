@@ -27,6 +27,8 @@ gcloud run services update cfcg-an-webhook \
 |SEND_TO_EXISTING_EMAILS=true\clear
 
 |UPDATE_GROUP_KEY=false\
+|REMOVE_MULTI_IDENTIFIERS=true\
+|TRANSACTION_WINDOW_SECONDS=10\
 |LOG_PAYLOADS=true\
 |LOG_EMAILS=true" \
   --project trim-sunlight-489423-h3
