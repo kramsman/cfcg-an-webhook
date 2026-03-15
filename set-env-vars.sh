@@ -18,6 +18,8 @@ gcloud run services update cfcg-an-webhook \
 |ALLOWED_RECIPIENT_EMAILS=rovmailtester@gmail.com,kramsman@yahoo.com\
 |NOTIFICATION_EMAIL_LIST=kramsman@yahoo.com\
 |PAYLOAD_NOTIFICATION=kramsman@yahoo.com\
+|APPEND_TO_SHEET=true\
+|GOOGLE_SHEET_ID=1TSQ4OEyAETpYV3FPfqiFgDvpH6lN3kscMTOfTkvYI58\
 |ALWAYS_CC_LIST=\
 |ALWAYS_BCC_LIST=\
 |CHECK_IDEMPOTENCY=true\

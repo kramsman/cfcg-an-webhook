@@ -19,48 +19,84 @@ SERVER_URL = "http://localhost:8080"
 # ── Sample Action Network webhook payload ─────────────────────────────────────
 # This mirrors the real payload AN sends. Edit as needed for your tests.
 
-TEST_PAYLOAD = [
+TEST_PAYLOAD =[
     {
-        "osdi:attendance": {
-            "created_date": "2025-04-21T19:14:50Z",
-            "modified_date": "2025-04-21T19:14:50Z",
+        "osdi:submission": {
+            "created_date": "2026-03-11T16:05:37Z",
+            "modified_date": "2026-03-11T16:05:37Z",
             "identifiers": [
-                "action_network:0564993e-9b4c-4ee6-b84c-f6f8614b492d"
+                "action_network:a2319f88-532b-434b-8dd1-829a83747007"
             ],
             "person": {
-                "family_name": "Test",
-                "given_name": "Kramer",
+                "created_date": "2026-03-11T16:05:37Z",
+                "modified_date": "2026-03-11T16:06:18Z",
+                "family_name": "testkramer",
+                "given_name": "testbrian",
                 "postal_addresses": [
                     {
                         "primary": True,
-                        "locality": "New York",
+                        "locality": "new york",
                         "region": "New York",
-                        "postal_code": "10023",   # ← change this to test different orgs
+                        "postal_code": "10023",
                         "country": "US",
-                        "address_lines": ["123 Main St"]
+                        "location": {
+                            "latitude": 40.7764,
+                            "longitude": -73.9827,
+                            "accuracy": "Approximate"
+                        }
                     }
                 ],
                 "email_addresses": [
                     {
                         "primary": True,
-                        "address": "briank@kramericore.com"   # ← use your test email
+                        "address": "rovmailtester@gmail.com"
                     }
                 ],
                 "phone_numbers": [
                     {
                         "primary": True,
-                        "number": "212-555-1234",
+                        "status": "subscribed",
                         "number_type": "Mobile"
                     }
                 ],
                 "custom_fields": {
-                    "Volunteer Interest": "Postcarding",
-                    "Referred By": "Friend"
-                }
+                    "Mobile Phone": "9175551234",
+                    "textarea": "4thu",
+                    "Volunteer_Sign petitions": "1",
+                    "Volunteer_Call/email/tweet my legislator": "1",
+                    "Volunteer_Meet with my legislator": "1",
+                    "Volunteer_Phonebank to voters": "1",
+                    "Volunteer_Postcard to voters": "1",
+                    "Volunteer_Text to voters": "1",
+                    "Volunteer_Host actions/events": "1",
+                    "Volunteer_Canvass": "1",
+                    "Volunteer_Drive Voters to the Polls": "1",
+                    "checkboxes_Alabama": "1",
+                    "checkboxes_Georgia": "1",
+                    "checkboxes_North Carolina": "1",
+                    "checkboxes_Texas": "1",
+                    "checkboxes_Virginia": "1"
+                },
+                "languages_spoken": [
+                    "en"
+                ]
+            },
+            "add_tags": [
+                "volunteer"
+            ],
+            "action_network:referrer_data": {
+                "source": "widget",
+                "website": "www.centerforcommonground.org"
             },
             "_links": {
+                "self": {
+                    "href": "https://actionnetwork.org/api/v2/forms/cdab2748-7f19-418f-a989-539362b9ecf3/submissions/a2319f88-532b-434b-8dd1-829a83747007"
+                },
+                "osdi:form": {
+                    "href": "https://actionnetwork.org/api/v2/forms/cdab2748-7f19-418f-a989-539362b9ecf3"
+                },
                 "osdi:person": {
-                    "href": "https://actionnetwork.org/api/v2/people/test-person-id-12345"
+                    "href": "https://actionnetwork.org/api/v2/people/1d774b1a-8017-43e0-9ba3-4514262eb8c5"
                 }
             }
         },
@@ -68,7 +104,7 @@ TEST_PAYLOAD = [
             "title": "Center for Common Ground",
             "url": "https://actionnetwork.org/groups/center-for-common-ground"
         },
-        "idempotency_key": "test-idem-key-abc123"
+        "idempotency_key": "8222b5db14bb49a060b3f0f6cab321e6"
     }
 ]
 

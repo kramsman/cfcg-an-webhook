@@ -10,10 +10,13 @@ dependencies = [
     "sendgrid>=6.11",
     "google-cloud-secret-manager>=2.20",
     "google-cloud-storage>=2.10",
+    "google-api-python-client>=2.100",
+    "google-auth>=2.20",
     "loguru>=0.7",
     "python-dotenv>=1.0",
     "requests>=2.31",
     "uvbekutils",
+    "bekgoogle",
     "pandas>=2.0",
 ]
 
@@ -25,6 +28,7 @@ dev-dependencies = [
 
 [tool.uv.sources]
 uvbekutils = { git = "https://github.com/kramsman/uvbekutils.git" }
+bekgoogle = { path = "../../../PythonPrograms/bekgoogle", editable = true }
 
 [tool.pytest.ini_options]
 markers = [

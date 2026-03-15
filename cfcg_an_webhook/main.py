@@ -25,7 +25,11 @@ from dotenv import load_dotenv
 from flask import Flask, request
 from loguru import logger
 from sendgrid import SendGridAPIClient
+import google.auth
 from google.cloud import secretmanager, storage
+from googleapiclient.discovery import build as _build_gapi_service
+from bekgoogle.append_to_sheet import append_to_sheet
+
 
 # Load .env file when running locally (ignored in Cloud Run)
 load_dotenv()
@@ -87,6 +91,11 @@ LOG_EMAILS            = os.environ.get("LOG_EMAILS",            "false").lower()
 logger.debug(f"LOG_PAYLOADS= {LOG_PAYLOADS}")
 logger.debug(f"LOG_EMAILS= {LOG_EMAILS}")
 
+APPEND_TO_SHEET = os.environ.get("APPEND_TO_SHEET", "false").lower() == "true"
+GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")
+SHEET_TAB       = "AN-JAN5-2026-START"   # sheet tab name — update at start of each year
+logger.debug(f"APPEND_TO_SHEET={APPEND_TO_SHEET} GOOGLE_SHEET_ID={'(set)' if GOOGLE_SHEET_ID else '(empty)'}")
+
 # Fields read from zip_dict.json — must match org_fields passed to
 # create_organizer_info_by_zip_file() in the cfcg-reports generator project.
 ZIP_DICT_FIELDS = ['region_key', 'email', 'nickname', 'cc_org']
@@ -114,6 +123,25 @@ OSDI_TYPE_CONFIG = {
     'outreach':    {'parsed': False, 'send_email': False},   # advocacy campaign action
     'response':    {'parsed': False, 'send_email': False},   # survey response
     'tagging':     {'parsed': False, 'send_email': False},   # tag applied to person
+}
+
+# US state full name → 2-letter abbreviation (used to convert payload region to sheet column)
+_STATE_ABBREV = {
+    "Alabama": "AL", "Alaska": "AK", "Arizona": "AZ", "Arkansas": "AR",
+    "California": "CA", "Colorado": "CO", "Connecticut": "CT", "Delaware": "DE",
+    "District of Columbia": "DC", "Florida": "FL", "Georgia": "GA", "Hawaii": "HI",
+    "Idaho": "ID", "Illinois": "IL", "Indiana": "IN", "Iowa": "IA",
+    "Kansas": "KS", "Kentucky": "KY", "Louisiana": "LA", "Maine": "ME",
+    "Maryland": "MD", "Massachusetts": "MA", "Michigan": "MI", "Minnesota": "MN",
+    "Mississippi": "MS", "Missouri": "MO", "Montana": "MT", "Nebraska": "NE",
+    "Nevada": "NV", "New Hampshire": "NH", "New Jersey": "NJ", "New Mexico": "NM",
+    "New York": "NY", "North Carolina": "NC", "North Dakota": "ND", "Ohio": "OH",
+    "Oklahoma": "OK", "Oregon": "OR", "Pennsylvania": "PA", "Rhode Island": "RI",
+    "South Carolina": "SC", "South Dakota": "SD", "Tennessee": "TN", "Texas": "TX",
+    "Utah": "UT", "Vermont": "VT", "Virginia": "VA", "Washington": "WA",
+    "West Virginia": "WV", "Wisconsin": "WI", "Wyoming": "WY",
+    "Puerto Rico": "PR", "Guam": "GU", "Virgin Islands": "VI",
+    "American Samoa": "AS", "Northern Mariana Islands": "MP",
 }
 
 # ─── GCP Secret Manager ───────────────────────────────────────────────────────
@@ -228,6 +256,10 @@ def parse_recipient(record: dict) -> dict:
         "recipient_zip_raw":    "",
         "recipient_zip":        0,
         "custom_fields":        [],
+        "custom_fields_dict":   {},
+        "recipient_tags":         "",
+        "recipient_state_abbrev": "",
+        "recipient_organization": "",
     }
 
     # Find the osdi:* key (e.g. osdi:attendance, osdi:submission)
@@ -266,8 +298,9 @@ def parse_recipient(record: dict) -> dict:
 
     person = osdi_data.get("person") or {}
 
-    out["recipient_last_name"]  = (person.get("family_name") or "").title().strip()
-    out["recipient_first_name"] = (person.get("given_name")  or "").title().strip()
+    out["recipient_last_name"]      = (person.get("family_name") or "").title().strip()
+    out["recipient_first_name"]     = (person.get("given_name")  or "").title().strip()
+    out["recipient_organization"]   = (person.get("employer")    or "").strip()
 
     # Primary postal address
     addresses = person.get("postal_addresses") or []
@@ -289,12 +322,19 @@ def parse_recipient(record: dict) -> dict:
     out["recipient_phone"]      = primary_phone.get("number", "")
     out["recipient_phone_type"] = primary_phone.get("number_type", "")
 
-    # Custom fields
+    # Custom fields — keep raw dict for sheet mapping; build formatted list for welcome email
     custom = person.get("custom_fields") or {}
+    out["custom_fields_dict"] = custom
     out["custom_fields"] = [
         f"{k}: {'Yes' if v == '1' else v}"
         for k, v in custom.items()
     ]
+
+    # Tags (e.g. ["volunteer"]) — comma-joined string for the sheet
+    out["recipient_tags"] = ", ".join(osdi_data.get("add_tags") or [])
+
+    # State abbreviation (payload gives full name like "New York"; sheet wants "NY")
+    out["recipient_state_abbrev"] = _STATE_ABBREV.get(out["recipient_state"], out["recipient_state"])
 
     out["recipient_zip"] = to_zip5(out["recipient_zip_raw"])
 
@@ -372,6 +412,7 @@ def _build_welcome_email(r: dict) -> dict:
     if custom_fields:
         sub_items = "".join(f"<li>{cf}</li>" for cf in custom_fields)
         info_lines.append(f"Extra information:<ul>{sub_items}</ul>")
+
     items      = "".join(f"<li>{item}</li>" for item in info_lines if item)
     info_block = f"<ul>{items}</ul>"
 
@@ -581,6 +622,61 @@ def update_group_key(group_key: str, person_id: str):
         _send_notification("group_key update failed", msg)
 
 
+# ─── Google Sheet Append ──────────────────────────────────────────────────────
+
+def _get_sheet_service():
+    """Build an authenticated Google Sheets API service using Application Default Credentials.
+
+    Works locally (via `gcloud auth application-default login`) and in Cloud Run
+    (via the attached service account). The service account must have Editor access
+    on the target Google Sheet.
+    """
+    creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/spreadsheets"])
+    return _build_gapi_service("sheets", "v4", credentials=creds)
+
+
+def _append_to_sheet(recipient: dict):
+    """Append one signup row to the Google Sheet defined by GOOGLE_SHEET_ID.
+
+    Column order matches the AN report export:
+    first_name | last_name | email | zip_code | can2_user_city | can2_county |
+    can2_state_abbreviated | Volunteer_Postcard to voters |
+    Volunteer_Text to voters | Volunteer_Phonebank to voters |
+    can2_user_tags | can2_subscription_date | Organization
+
+    Does nothing if APPEND_TO_SHEET=false or GOOGLE_SHEET_ID is empty.
+    """
+    if not APPEND_TO_SHEET or not GOOGLE_SHEET_ID:
+        return
+    try:
+        cf = recipient.get("custom_fields_dict") or {}
+        created = recipient.get("created_date")
+        row = [
+            recipient.get("recipient_first_name", ""),
+            recipient.get("recipient_last_name", ""),
+            recipient.get("recipient_email", ""),
+            str(recipient.get("recipient_zip", "")),
+            recipient.get("recipient_city", ""),
+            "",                                              # can2_county — not in payload
+            recipient.get("recipient_state_abbrev", ""),
+            cf.get("Volunteer_Postcard to voters", ""),
+            cf.get("Volunteer_Text to voters", ""),
+            cf.get("Volunteer_Phonebank to voters", ""),
+            recipient.get("recipient_tags", ""),
+            created.strftime("%Y-%m-%d %H:%M:%S") if created else "",
+            recipient.get("recipient_organization", ""),
+        ]
+        headers = ["first_name", "last_name", "email", "zip_code", "city", "county",
+                   "state", "Volunteer_Postcard", "Volunteer_Text", "Volunteer_Phonebank",
+                   "tags", "date", "Organization"]
+        logger.info(f"[SHEET ROW] {dict(zip(headers, row))}")
+        svc = _get_sheet_service()
+        append_to_sheet(svc, GOOGLE_SHEET_ID, SHEET_TAB, [row])
+        logger.info(f"Appended sheet row for {recipient.get('recipient_email')}")
+    except Exception as exc:
+        logger.error(f"Failed to append to Google Sheet: {exc}")
+
+
 # ─── Recipient Processing ─────────────────────────────────────────────────────
 
 def process_recipient(recipient: dict) -> tuple:
@@ -630,6 +726,8 @@ def process_recipient(recipient: dict) -> tuple:
     if not type_config.get("send_email", False):
         logger.info(f"osdi type {json_type!r} send_email=False, is configured but skipping")
         return f"Skipped (send_email=False for type {json_type!r})", 200
+
+    _append_to_sheet(recipient)
 
     if not SEND_RECIPIENT_EMAILS:
         logger.info(f"SEND_RECIPIENT_EMAILS: {SEND_RECIPIENT_EMAILS}; skipping {recipient.get('recipient_email')}")

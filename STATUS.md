@@ -40,6 +40,35 @@ Only the specified variable changes — everything else stays as-is.
 - [ ] Connect Action Network webhook (Step 26 in SETUP_GUIDE.md) — after deploy is confirmed working
 - [ ] Push to GitHub (repo not yet pushed to remote)
 
+## Google Sheet Append — Testing Steps
+
+New feature: webhook appends each signup to a Google Sheet. To test:
+
+### One-time setup (Cloud Run)
+1. Find the service account email: `cfcg-an-webhook-sa@trim-sunlight-489423-h3.iam.gserviceaccount.com`
+2. Open your Google Sheet → **Share** → paste the service account email → set to **Editor** → Send
+
+### Local testing
+1. Get your sheet ID: open the sheet, copy the long string from the URL between `/d/` and `/edit`
+2. In `.env`, set:
+   ```
+   APPEND_TO_SHEET=true
+   GOOGLE_SHEET_ID=<paste your sheet ID here>
+   ```
+3. Run the server locally: `uv run flask --app cfcg_an_webhook.main run --port 8080`
+4. In a second terminal: `python test_local.py`
+5. Check the sheet — a new row should appear at the bottom with these 13 columns:
+   `first_name | last_name | email | zip_code | city | county(blank) | state_abbrev |
+   Volunteer_Postcard | Volunteer_Text | Volunteer_Phonebank | tags | date | Organization`
+6. Confirm state is abbreviated (e.g. `NY` not `New York`) and county is blank
+
+### Cloud Run
+1. Update `set-env-vars.sh`: set `APPEND_TO_SHEET=true` and `GOOGLE_SHEET_ID=<your sheet id>`
+2. Run `./set-env-vars.sh` (no redeploy needed)
+
+### Sheet tab name
+The tab name is defined as `SHEET_TAB` in `main.py` (currently `AN-JAN5-2026-START`). Update it at the start of each year.
+
 ## Known Issues
 - Cloud Run org policy blocks `--allow-unauthenticated` — if redeploy fails on that, contact org admin
   or use personal Gmail account to create a new GCP project
