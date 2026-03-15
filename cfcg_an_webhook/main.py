@@ -707,7 +707,7 @@ def _send_notification(subject: str, message: str):
         logger.error(f"*Exception - Failed to send notification email: {exc}")
 
 
-def _send_payload_notification(payload):
+def _send_payload_notification(payload, emails: list):
     """Send prettified payload JSON to PAYLOAD_NOTIFICATION_LIST on every webhook arrival."""
     if not PAYLOAD_NOTIFICATION_LIST:
         return
@@ -717,11 +717,12 @@ def _send_payload_notification(payload):
         received_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         pretty_json = json.dumps(payload, indent=2)
         body = f"<p>Received: {received_at}</p><pre>{pretty_json}</pre>"
+        email_label = ", ".join(emails) if emails else "unknown"
         data = {
             "content": [{"type": "text/html", "value": body}],
             "from": {"email": FROM_EMAIL, "name": FROM_NAME},
             "personalizations": [{"to": PAYLOAD_NOTIFICATION_LIST}],
-            "subject": "Webhook - new payload",
+            "subject": f"Webhook - new payload — {email_label}",
         }
         sg.client.mail.send.post(request_body=data)
     except Exception as exc:
@@ -926,11 +927,16 @@ def webhook():
         logger.warning("Payload rejected: missing action_network:sponsor")
         return {"error": "Invalid Action Network payload"}, 400
 
-    _send_payload_notification(payload)
+    # Parse all records up front so email is available for logging and notification
+    parsed_records = [parse_recipient(r) for r in payload]
+    emails = [r.get("recipient_email", "") for r in parsed_records if r.get("recipient_email")]
+
+    _send_payload_notification(payload, emails)
 
     if LOG_PAYLOADS:
-        logger.warning(f"[***** PAYLOAD DETAIL LOG] Raw webhook payload (contains personal info — "
-                    f"disable LOG_PAYLOADS when stable): {json.dumps(payload)}")
+        logger.warning(f"[***** PAYLOAD DETAIL LOG] {emails} "
+                       f"(contains personal info — disable LOG_PAYLOADS when stable): "
+                       f"{json.dumps(payload)}")
 
     results = []
 
@@ -938,11 +944,11 @@ def webhook():
     if REMOVE_MULTI_IDENTIFIERS:
         _drain_expired_buffer()
 
-    for record in payload:
+    for record, recipient in zip(payload, parsed_records):
         if REMOVE_MULTI_IDENTIFIERS:
             tid = _get_transaction_id(record)
             if tid is not None:
-                recipient = parse_recipient(record)
+                # recipient already parsed above — use it directly
 
                 # 1. Check duplicate FIRST — before buffering
                 if CHECK_IDEMPOTENCY:
@@ -983,8 +989,7 @@ def webhook():
                 continue   # drain thread handles processing after window expires
 
         # Non-buffered path (no identifier, or REMOVE_MULTI_IDENTIFIERS=False)
-        recipient = parse_recipient(record)
-
+        # recipient already parsed above — use it directly
         if CHECK_IDEMPOTENCY:
             ikey = recipient.get("idempotency_key")
             if ikey and ikey in _processed_keys:
