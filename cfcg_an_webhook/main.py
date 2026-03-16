@@ -1028,6 +1028,29 @@ def health():
     return {"status": "ok", "zip_codes_loaded": len(ZIP_TO_ORG)}, 200
 
 
+@app.route("/idempotency", methods=["GET"])
+def idempotency_status():
+    """Diagnostic — show processed idempotency keys in one log line."""
+    keys = sorted(_processed_keys)
+    summary = f"[IDEMPOTENCY] {len(keys)} key(s): {json.dumps(keys)}"
+    logger.info(summary)
+    return summary, 200
+
+
+@app.route("/buffer", methods=["GET"])
+def buffer_status():
+    """Diagnostic — show current transaction buffer contents in one log line."""
+    with _buffer_lock:
+        snapshot = {
+            tid: {"emails": [r.get("recipient_email") for r in entry["recipients"]],
+                  "age_s": round(time.time() - entry["first_seen"])}
+            for tid, entry in _transaction_buffer.items()
+        }
+    summary = f"[BUFFER] {len(snapshot)} transaction(s): {json.dumps(snapshot)}"
+    logger.info(summary)
+    return summary, 200
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     logger.info(f"Starting local dev server on http://localhost:{port}")
