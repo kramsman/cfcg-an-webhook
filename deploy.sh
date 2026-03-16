@@ -8,6 +8,7 @@ gcloud run deploy cfcg-an-webhook \
   --region us-east1 \
   --platform managed \
   --allow-unauthenticated \
+  --clear-base-image \
   --service-account "cfcg-an-webhook-sa@trim-sunlight-489423-h3.iam.gserviceaccount.com" \
   --project trim-sunlight-489423-h3
 

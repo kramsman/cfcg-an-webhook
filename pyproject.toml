@@ -15,8 +15,6 @@ dependencies = [
     "loguru>=0.7",
     "python-dotenv>=1.0",
     "requests>=2.31",
-    "uvbekutils",
-    "bekgoogle",
     "pandas>=2.0",
 ]
 
@@ -26,9 +24,6 @@ dev-dependencies = [
     "pytest-dotenv>=0.5",
 ]
 
-[tool.uv.sources]
-uvbekutils = { git = "https://github.com/kramsman/uvbekutils.git" }
-bekgoogle = { path = "../../../PythonPrograms/bekgoogle", editable = true }
 
 [tool.pytest.ini_options]
 markers = [

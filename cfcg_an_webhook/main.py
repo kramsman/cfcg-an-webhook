@@ -29,7 +29,6 @@ from sendgrid import SendGridAPIClient
 import google.auth
 from google.cloud import secretmanager, storage
 from googleapiclient.discovery import build as _build_gapi_service
-from bekgoogle.append_to_sheet import append_to_sheet
 
 
 # Load .env file when running locally (ignored in Cloud Run)
@@ -832,7 +831,13 @@ def _append_to_sheet(recipient: dict):
                    "tags", "date", "Organization"]
         logger.info(f"[SHEET ROW] {dict(zip(headers, row))}")
         svc = _get_sheet_service()
-        append_to_sheet(svc, GOOGLE_SHEET_ID, SHEET_TAB, [row])
+        (svc.spreadsheets().values().append(
+            spreadsheetId=GOOGLE_SHEET_ID,
+            range=SHEET_TAB,
+            valueInputOption="USER_ENTERED",
+            insertDataOption="INSERT_ROWS",
+            body={"values": [row]},
+        ).execute())
         logger.info(f"Appended sheet row for {recipient.get('recipient_email')}")
     except Exception as exc:
         logger.error(f"Failed to append to Google Sheet: {exc}")
