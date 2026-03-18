@@ -1035,6 +1035,38 @@ def health():
     return {"status": "ok", "zip_codes_loaded": len(ZIP_TO_ORG)}, 200
 
 
+@app.route("/settings", methods=["GET"])
+def settings_status():
+    """Diagnostic — echo all env-var-driven configuration in one log line."""
+    cfg = {
+        "CLOUD_PROJECT_ID":           CLOUD_PROJECT_ID,
+        "GCS_BUCKET":                 GCS_BUCKET,
+        "FROM_EMAIL":                 FROM_EMAIL,
+        "FROM_NAME":                  FROM_NAME,
+        "SEND_RECIPIENT_EMAILS":      SEND_RECIPIENT_EMAILS,
+        "SEND_NOTIFICATION_EMAILS":   SEND_NOTIFICATION_EMAILS,
+        "ALLOWED_RECIPIENT_EMAILS":   ALLOWED_RECIPIENT_EMAILS,
+        "NOTIFICATION_EMAIL_LIST":    [e["email"] for e in NOTIFICATION_EMAIL_LIST],
+        "PAYLOAD_NOTIFICATION":       [e["email"] for e in PAYLOAD_NOTIFICATION_LIST],
+        "EXCLUDED_PAYLOAD_OSDI":      sorted(EXCLUDED_PAYLOAD_OSDI),
+        "ALWAYS_CC_LIST":             [e for e, _ in ALWAYS_CC_LIST],
+        "ALWAYS_BCC_LIST":            [e for e, _ in ALWAYS_BCC_LIST],
+        "CHECK_IDEMPOTENCY":          CHECK_IDEMPOTENCY,
+        "CHECK_ALREADY_EMAILED":      CHECK_ALREADY_EMAILED,
+        "SEND_TO_EXISTING_EMAILS":    SEND_TO_EXISTING_EMAILS,
+        "UPDATE_GROUP_KEY":           UPDATE_GROUP_KEY,
+        "LOG_PAYLOADS":               LOG_PAYLOADS,
+        "LOG_EMAILS":                 LOG_EMAILS,
+        "APPEND_TO_SHEET":            APPEND_TO_SHEET,
+        "GOOGLE_SHEET_ID":            GOOGLE_SHEET_ID,
+        "REMOVE_MULTI_IDENTIFIERS":   REMOVE_MULTI_IDENTIFIERS,
+        "TRANSACTION_WINDOW_SECONDS": TRANSACTION_WINDOW_SECONDS,
+    }
+    summary = f"[SETTINGS] {json.dumps(cfg)}"
+    logger.info(summary)
+    return summary, 200
+
+
 @app.route("/idempotency", methods=["GET"])
 def idempotency_status():
     """Diagnostic — show processed idempotency keys in one log line."""
