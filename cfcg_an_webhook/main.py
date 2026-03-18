@@ -61,6 +61,8 @@ NOTIFICATION_EMAIL_LIST = [{"email": e.strip()} for e in _notif_raw.split(",") i
 
 _payload_notif_raw = os.environ.get("PAYLOAD_NOTIFICATION", "")
 PAYLOAD_NOTIFICATION_LIST = [{"email": e.strip()} for e in _payload_notif_raw.split(",") if e.strip()]
+_excl_raw = os.environ.get("EXCLUDED_PAYLOAD_OSDI", "")
+EXCLUDED_PAYLOAD_OSDI = {t.strip() for t in _excl_raw.split(",") if t.strip()}
 
 def _parse_email_name_list(raw: str) -> list:
     """Parse 'email:name,email:name' string into a list of (email, name) tuples."""
@@ -709,6 +711,9 @@ def _send_notification(subject: str, message: str):
 def _send_payload_notification(payload, emails: list, types: list):
     """Send prettified payload JSON to PAYLOAD_NOTIFICATION_LIST on every webhook arrival."""
     if not PAYLOAD_NOTIFICATION_LIST:
+        return
+    if EXCLUDED_PAYLOAD_OSDI and types and all(t in EXCLUDED_PAYLOAD_OSDI for t in types):
+        logger.debug(f"Payload notification suppressed — all types {types} are in EXCLUDED_PAYLOAD_OSDI")
         return
     try:
         api_key = get_secret("SENDGRID_API_KEY")
