@@ -706,7 +706,7 @@ def _send_notification(subject: str, message: str):
         logger.error(f"*Exception - Failed to send notification email: {exc}")
 
 
-def _send_payload_notification(payload, emails: list):
+def _send_payload_notification(payload, emails: list, types: list):
     """Send prettified payload JSON to PAYLOAD_NOTIFICATION_LIST on every webhook arrival."""
     if not PAYLOAD_NOTIFICATION_LIST:
         return
@@ -717,11 +717,12 @@ def _send_payload_notification(payload, emails: list):
         pretty_json = json.dumps(payload, indent=2)
         body = f"<p>Received: {received_at}</p><pre>{pretty_json}</pre>"
         email_label = ", ".join(emails) if emails else "unknown"
+        type_label  = ", ".join(types)  if types  else "unknown"
         data = {
             "content": [{"type": "text/html", "value": body}],
             "from": {"email": FROM_EMAIL, "name": FROM_NAME},
             "personalizations": [{"to": PAYLOAD_NOTIFICATION_LIST}],
-            "subject": f"Webhook - new payload — {email_label}",
+            "subject": f"Webhook - new payload — {email_label} ({type_label})",
         }
         sg.client.mail.send.post(request_body=data)
     except Exception as exc:
@@ -935,8 +936,9 @@ def webhook():
     # Parse all records up front so email is available for logging and notification
     parsed_records = [parse_recipient(r) for r in payload]
     emails = [r.get("recipient_email", "") for r in parsed_records if r.get("recipient_email")]
+    types  = [r.get("json_type", "") for r in parsed_records if r.get("json_type")]
 
-    _send_payload_notification(payload, emails)
+    _send_payload_notification(payload, emails, types)
 
     if LOG_PAYLOADS:
         logger.warning(f"[***** PAYLOAD DETAIL LOG] {emails} "
