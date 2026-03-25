@@ -19,15 +19,15 @@ GCS_BUCKET       = os.environ.get("GCS_BUCKET", "")  # required in Cloud Run; no
 
 # ─── Email identity ───────────────────────────────────────────────────────────
 
-FROM_EMAIL = os.environ.get("FROM_EMAIL", "centerforcommonground.tech@gmail.com")
-FROM_NAME  = os.environ.get("FROM_NAME",  "Center for Common Ground Team")
-LOGO_URL   = os.environ.get("LOGO_URL",   "")
+FROM_EMAIL = os.environ.get("FROM_EMAIL", "centerforcommonground.tech@gmail.com")  # sender address shown on welcome emails
+FROM_NAME  = os.environ.get("FROM_NAME",  "Center for Common Ground Team")           # sender name shown on welcome emails
+LOGO_URL   = os.environ.get("LOGO_URL",   "")                                        # URL to org logo in email header; leave empty to omit logo
 
 # ─── Email sending flags ──────────────────────────────────────────────────────
 
 # Set SEND_RECIPIENT_EMAILS=false during testing to skip actual sends.
-SEND_RECIPIENT_EMAILS    = os.environ.get("SEND_RECIPIENT_EMAILS",    "true").lower()  == "true"
-SEND_NOTIFICATION_EMAILS = os.environ.get("SEND_NOTIFICATION_EMAILS", "false").lower() == "true"
+SEND_RECIPIENT_EMAILS    = os.environ.get("SEND_RECIPIENT_EMAILS",    "true").lower()  == "true"  # true = send welcome emails to new signups; set false during testing
+SEND_NOTIFICATION_EMAILS = os.environ.get("SEND_NOTIFICATION_EMAILS", "false").lower() == "true"  # true = send admin alert emails on errors/warnings
 logger.debug(f"SEND_RECIPIENT_EMAILS={SEND_RECIPIENT_EMAILS}")
 logger.debug(f"SEND_NOTIFICATION_EMAILS={SEND_NOTIFICATION_EMAILS}")
 
@@ -36,13 +36,13 @@ logger.debug(f"SEND_NOTIFICATION_EMAILS={SEND_NOTIFICATION_EMAILS}")
 ALLOWED_RECIPIENT_EMAILS = [
     e.strip() for e in os.environ.get("ALLOWED_RECIPIENT_EMAILS", "").split(",") if e.strip()
 ]
-NOTIFICATION_EMAIL_LIST = [
+NOTIFICATION_EMAIL_LIST = [                                                         # admin alert recipients; leave empty to disable notifications
     {"email": e.strip()} for e in os.environ.get("NOTIFICATION_EMAIL_LIST", "").split(",") if e.strip()
 ]
-PAYLOAD_NOTIFICATION_LIST = [
+PAYLOAD_NOTIFICATION_LIST = [                                                       # receives a copy of every incoming webhook payload; leave empty to disable
     {"email": e.strip()} for e in os.environ.get("PAYLOAD_NOTIFICATION", "").split(",") if e.strip()
 ]
-EXCLUDED_PAYLOAD_OSDI = {
+EXCLUDED_PAYLOAD_OSDI = {                                                           # suppress payload notification emails for these osdi types (e.g. attendance,outreach)
     t.strip() for t in os.environ.get("EXCLUDED_PAYLOAD_OSDI", "").split(",") if t.strip()
 }
 
@@ -62,38 +62,38 @@ def _parse_email_name_list(raw: str) -> list:
     return pairs
 
 
-# CC or BCC if an admin wants to monitor what is going on
-ALWAYS_CC_LIST  = _parse_email_name_list(os.environ.get("ALWAYS_CC_LIST",  ""))
-ALWAYS_BCC_LIST = _parse_email_name_list(os.environ.get("ALWAYS_BCC_LIST", ""))
+# CC or BCC if an admin wants to monitor what is going on. Format: email:name,email:name — leave empty to add no one.
+ALWAYS_CC_LIST  = _parse_email_name_list(os.environ.get("ALWAYS_CC_LIST",  ""))  # added to every outgoing welcome email as CC
+ALWAYS_BCC_LIST = _parse_email_name_list(os.environ.get("ALWAYS_BCC_LIST", ""))  # added to every outgoing welcome email as BCC
 
 # ─── Duplicate / idempotency controls ─────────────────────────────────────────
 
-CHECK_IDEMPOTENCY       = os.environ.get("CHECK_IDEMPOTENCY",       "false").lower() == "true"
-CHECK_ALREADY_EMAILED   = os.environ.get("CHECK_ALREADY_EMAILED",   "false").lower() == "true"
-SEND_TO_EXISTING_EMAILS = os.environ.get("SEND_TO_EXISTING_EMAILS", "false").lower() == "true"
-UPDATE_GROUP_KEY        = os.environ.get("UPDATE_GROUP_KEY",        "false").lower() == "true"
-LOG_PAYLOADS            = os.environ.get("LOG_PAYLOADS",            "false").lower() == "true"
-LOG_EMAILS              = os.environ.get("LOG_EMAILS",              "false").lower() == "true"
+CHECK_IDEMPOTENCY       = os.environ.get("CHECK_IDEMPOTENCY",       "false").lower() == "true"  # true = skip if this payload UUID was already processed
+CHECK_ALREADY_EMAILED   = os.environ.get("CHECK_ALREADY_EMAILED",   "false").lower() == "true"  # true = look up AN record to see if welcome email was already sent
+SEND_TO_EXISTING_EMAILS = os.environ.get("SEND_TO_EXISTING_EMAILS", "false").lower() == "true"  # true = email even if person already existed in AN (requires CHECK_ALREADY_EMAILED=true)
+UPDATE_GROUP_KEY        = os.environ.get("UPDATE_GROUP_KEY",        "false").lower() == "true"  # true = write region group_key back to Action Network after emailing
+LOG_PAYLOADS            = os.environ.get("LOG_PAYLOADS",            "false").lower() == "true"  # true = log raw webhook payload (contains personal info — disable when stable)
+LOG_EMAILS              = os.environ.get("LOG_EMAILS",              "false").lower() == "true"  # true = log outgoing email details (contains personal info — disable when stable)
 logger.debug(f"LOG_PAYLOADS={LOG_PAYLOADS}")
 logger.debug(f"LOG_EMAILS={LOG_EMAILS}")
 
 # ─── Google Sheets ────────────────────────────────────────────────────────────
 
-APPEND_TO_SHEET = os.environ.get("APPEND_TO_SHEET", "false").lower() == "true"
-GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")
+APPEND_TO_SHEET = os.environ.get("APPEND_TO_SHEET", "false").lower() == "true"  # true = append signup row to Google Sheet (requires GOOGLE_SHEET_ID)
+GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")                         # alphanumeric ID from Sheet URL (/d/<ID>/edit); leave empty if APPEND_TO_SHEET=false
 # SHEET_TAB       = "AN-2026-RAW-DATA"   # sheet tab name — update at start of each year; AN-2026-RAW-DATA production
 SHEET_TAB       = "AN-JAN5-2026-START"   # sheet tab name; test in Copy: AN-JAN5-2026-START
 logger.debug(f"APPEND_TO_SHEET={APPEND_TO_SHEET}  GOOGLE_SHEET_ID={'(set)' if GOOGLE_SHEET_ID else '(empty)'}")
 
 # ─── Transaction buffering ────────────────────────────────────────────────────
 
-REMOVE_MULTI_IDENTIFIERS   = os.environ.get("REMOVE_MULTI_IDENTIFIERS",   "true").lower()  == "true"
-TRANSACTION_WINDOW_SECONDS = float(os.environ.get("TRANSACTION_WINDOW_SECONDS", "10"))
+REMOVE_MULTI_IDENTIFIERS   = os.environ.get("REMOVE_MULTI_IDENTIFIERS",   "true").lower()  == "true"  # true = buffer records sharing the same AN UUID and process as one transaction
+TRANSACTION_WINDOW_SECONDS = float(os.environ.get("TRANSACTION_WINDOW_SECONDS", "10"))              # seconds to wait before processing a buffered group (e.g. 10 locally, 7200 in prod)
 logger.debug(f"REMOVE_MULTI_IDENTIFIERS={REMOVE_MULTI_IDENTIFIERS}  TRANSACTION_WINDOW_SECONDS={TRANSACTION_WINDOW_SECONDS}")
 
 # ─── Server ───────────────────────────────────────────────────────────────────
 
-PORT = int(os.environ.get("PORT", "8080"))
+PORT = int(os.environ.get("PORT", "8080"))  # HTTP port Flask listens on; Cloud Run sets this automatically
 
 # ─── Static lookup tables ─────────────────────────────────────────────────────
 

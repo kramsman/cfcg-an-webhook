@@ -3,34 +3,57 @@
 # Run this from the project root: ./set-env-vars.sh
 # Also called automatically by deploy.sh after every deploy.
 #
-# Note: ^|^ tells gcloud to use | as the separator between variables instead
-# of the default comma — necessary because some values contain commas (email lists).
+# Each variable is one array entry so inline comments work correctly.
+# The ^|^ prefix tells gcloud to use | as the separator instead of the
+# default comma — necessary because some values contain commas (email lists).
 
+ENV_VARS=(
+  # ── GCP / Storage ──────────────────────────────────────────────────────────
+  "CLOUD_PROJECT_ID=trim-sunlight-489423-h3"                                        # GCP project ID (required)
+  "GCS_BUCKET=cfcg-an-webhook-storage-trim-sunlight-489423-h3"                     # Cloud Storage bucket where zip_dict.json is stored
+
+  # ── Email identity ─────────────────────────────────────────────────────────
+  "FROM_EMAIL=centerforcommonground.tech@gmail.com"                                 # sender address shown on welcome emails
+  "FROM_NAME=Center for Common Ground Team"                                         # sender name shown on welcome emails
+  "LOGO_URL=https://storage.googleapis.com/cfcg-an-webhook-storage-trim-sunlight-489423-h3/CFCG_logo.png"  # URL to org logo in email header; leave empty to omit
+
+  # ── Email sending flags ────────────────────────────────────────────────────
+  "SEND_RECIPIENT_EMAILS=false"                                                     # true = send welcome emails to new signups; false during testing
+  "SEND_NOTIFICATION_EMAILS=true"                                                   # true = send admin alert emails on errors/warnings (bad osdi type, zip not found, etc.)
+
+  # ── Email allow-list and notification lists ────────────────────────────────
+  "ALLOWED_RECIPIENT_EMAILS=kramsman@yahoo.com"                                     # safety list — only these addresses get welcome emails; leave empty to email everyone (production)
+  "NOTIFICATION_EMAIL_LIST=kramsman@yahoo.com"                                      # receives admin alert emails (errors, warnings)
+  "PAYLOAD_NOTIFICATION=kramsman@yahoo.com"                                         # receives a copy of every incoming webhook payload; leave empty to disable
+  "EXCLUDED_PAYLOAD_OSDI=attendance,outreach"                                       # suppress payload notification emails for these osdi types (submission is the only one flagged to send and log)
+
+  # ── CC / BCC on every welcome email ───────────────────────────────────────
+  "ALWAYS_CC_LIST="                                                                 # added as CC to every welcome email; format: email:name,email:name — leave empty to add no one
+  "ALWAYS_BCC_LIST="                                                                # added as BCC to every welcome email; leave empty to add no one
+
+  # ── Duplicate / idempotency controls ──────────────────────────────────────
+  "CHECK_IDEMPOTENCY=true"                                                          # true = skip if this payload UUID was already processed
+  "CHECK_ALREADY_EMAILED=true"                                                      # true = look up AN record to see if welcome email was already sent
+  "SEND_TO_EXISTING_EMAILS=true"                                                    # true = email even if person already existed in AN (requires CHECK_ALREADY_EMAILED=true)
+  "UPDATE_GROUP_KEY=false"                                                          # true = write region group_key back to Action Network after emailing
+
+  # ── Logging ────────────────────────────────────────────────────────────────
+  "LOG_PAYLOADS=true"                                                               # true = log raw webhook payload (contains personal info — disable when stable)
+  "LOG_EMAILS=true"                                                                 # true = log outgoing email details (contains personal info — disable when stable)
+
+  # ── Google Sheets ──────────────────────────────────────────────────────────
+  "APPEND_TO_SHEET=true"                                                            # true = append signup row to Google Sheet (requires GOOGLE_SHEET_ID)
+#  "GOOGLE_SHEET_ID=15vrphBaWAGPgsF4PlzligEwF-J7IShQVMMqidxvjsp0"                 # jsp0 — PRODUCTION sheet
+  "GOOGLE_SHEET_ID=1TSQ4OEyAETpYV3FPfqiFgDvpH6lN3kscMTOfTkvYI58"                  # YI58 — Copy of sheet for testing
+
+  # ── Transaction buffering ──────────────────────────────────────────────────
+  "REMOVE_MULTI_IDENTIFIERS=true"                                                   # true = buffer records sharing the same AN UUID and process as one transaction
+  "TRANSACTION_WINDOW_SECONDS=7200"                                                 # seconds to wait before processing a buffered group (e.g. 10 locally, 7200 in prod)
+)
+
+# Join array with | separator and pass to gcloud
+IFS='|'
 gcloud run services update cfcg-an-webhook \
   --region us-east1 \
-  --update-env-vars "^|^CLOUD_PROJECT_ID=trim-sunlight-489423-h3\
-|GCS_BUCKET=cfcg-an-webhook-storage-trim-sunlight-489423-h3\
-|FROM_EMAIL=centerforcommonground.tech@gmail.com\
-|FROM_NAME=Center for Common Ground Team\
-|LOGO_URL=https://storage.googleapis.com/cfcg-an-webhook-storage-trim-sunlight-489423-h3/CFCG_logo.png\
-|SEND_RECIPIENT_EMAILS=false\  # send emails to volunteers
-|SEND_NOTIFICATION_EMAILS=true\  # send status email like bad osdi type or zip not found
-|ALLOWED_RECIPIENT_EMAILS=kramsman@yahoo.com\
-|NOTIFICATION_EMAIL_LIST=kramsman@yahoo.com\
-|PAYLOAD_NOTIFICATION=kramsman@yahoo.com\
-|EXCLUDED_PAYLOAD_OSDI=attendance,outreach\  # submission is the only one flagged to send and log
-|APPEND_TO_SHEET=true\
-#  |GOOGLE_SHEET_ID=15vrphBaWAGPgsF4PlzligEwF-J7IShQVMMqidxvjsp0\  # jsp0 is production
-|GOOGLE_SHEET_ID=1TSQ4OEyAETpYV3FPfqiFgDvpH6lN3kscMTOfTkvYI58\  # YI58 is Copy of sheet for testing
-|ALWAYS_CC_LIST=\
-|ALWAYS_BCC_LIST=\
-|CHECK_IDEMPOTENCY=true\
-|CHECK_ALREADY_EMAILED=true\  # must be checked to email below
-|SEND_TO_EXISTING_EMAILS=true\  # already in AN
-
-|UPDATE_GROUP_KEY=false\
-|REMOVE_MULTI_IDENTIFIERS=true\
-|TRANSACTION_WINDOW_SECONDS=7200\
-|LOG_PAYLOADS=true\
-|LOG_EMAILS=true" \
+  --update-env-vars "^|^${ENV_VARS[*]}" \
   --project trim-sunlight-489423-h3
