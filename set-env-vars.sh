@@ -13,19 +13,20 @@ gcloud run services update cfcg-an-webhook \
 |FROM_EMAIL=centerforcommonground.tech@gmail.com\
 |FROM_NAME=Center for Common Ground Team\
 |LOGO_URL=https://storage.googleapis.com/cfcg-an-webhook-storage-trim-sunlight-489423-h3/CFCG_logo.png\
-|SEND_RECIPIENT_EMAILS=true\
-|SEND_NOTIFICATION_EMAILS=false\
-|ALLOWED_RECIPIENT_EMAILS=rovmailtester@gmail.com,kramsman@yahoo.com\
+|SEND_RECIPIENT_EMAILS=false\  # send emails to volunteers
+|SEND_NOTIFICATION_EMAILS=true\  # send status email like bad osdi type or zip not found
+|ALLOWED_RECIPIENT_EMAILS=kramsman@yahoo.com\
 |NOTIFICATION_EMAIL_LIST=kramsman@yahoo.com\
 |PAYLOAD_NOTIFICATION=kramsman@yahoo.com\
-|EXCLUDED_PAYLOAD_OSDI=attendance,outreach\
+|EXCLUDED_PAYLOAD_OSDI=attendance,outreach\  # submission is the only one flagged to send and log
 |APPEND_TO_SHEET=true\
-|GOOGLE_SHEET_ID=1TSQ4OEyAETpYV3FPfqiFgDvpH6lN3kscMTOfTkvYI58\
+#  |GOOGLE_SHEET_ID=15vrphBaWAGPgsF4PlzligEwF-J7IShQVMMqidxvjsp0\  # jsp0 is production
+|GOOGLE_SHEET_ID=1TSQ4OEyAETpYV3FPfqiFgDvpH6lN3kscMTOfTkvYI58\  # YI58 is Copy of sheet for testing
 |ALWAYS_CC_LIST=\
 |ALWAYS_BCC_LIST=\
 |CHECK_IDEMPOTENCY=true\
-|CHECK_ALREADY_EMAILED=true\
-|SEND_TO_EXISTING_EMAILS=true\
+|CHECK_ALREADY_EMAILED=true\  # must be checked to email below
+|SEND_TO_EXISTING_EMAILS=true\  # already in AN
 
 |UPDATE_GROUP_KEY=false\
 |REMOVE_MULTI_IDENTIFIERS=true\
