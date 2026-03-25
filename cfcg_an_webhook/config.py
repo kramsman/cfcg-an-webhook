@@ -70,6 +70,7 @@ ALWAYS_BCC_LIST = _parse_email_name_list(os.environ.get("ALWAYS_BCC_LIST", "")) 
 
 CHECK_IDEMPOTENCY       = os.environ.get("CHECK_IDEMPOTENCY",       "false").lower() == "true"  # true = skip if this payload UUID was already processed
 CHECK_ALREADY_EMAILED   = os.environ.get("CHECK_ALREADY_EMAILED",   "false").lower() == "true"  # true = look up AN record to see if welcome email was already sent
+CHECK_SHEET_FOR_EMAIL   = os.environ.get("CHECK_SHEET_FOR_EMAIL",   "false").lower() == "true"  # true = look up the Google Sheet to skip emails already logged there
 SEND_TO_EXISTING_EMAILS = os.environ.get("SEND_TO_EXISTING_EMAILS", "false").lower() == "true"  # true = email even if person already existed in AN (requires CHECK_ALREADY_EMAILED=true)
 UPDATE_GROUP_KEY        = os.environ.get("UPDATE_GROUP_KEY",        "false").lower() == "true"  # true = write region group_key back to Action Network after emailing
 LOG_PAYLOADS            = os.environ.get("LOG_PAYLOADS",            "false").lower() == "true"  # true = log raw webhook payload (contains personal info — disable when stable)

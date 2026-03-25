@@ -28,14 +28,14 @@ import google.auth
 from google.cloud import secretmanager, storage
 from googleapiclient.discovery import build as _build_gapi_service
 
-from .config import (
+from config import (
     ZIP_DICT_PATH, CLOUD_PROJECT_ID, GCS_BUCKET,
     FROM_EMAIL, FROM_NAME, LOGO_URL,
     SEND_RECIPIENT_EMAILS, SEND_NOTIFICATION_EMAILS,
     ALLOWED_RECIPIENT_EMAILS, NOTIFICATION_EMAIL_LIST,
     PAYLOAD_NOTIFICATION_LIST, EXCLUDED_PAYLOAD_OSDI,
     ALWAYS_CC_LIST, ALWAYS_BCC_LIST,
-    CHECK_IDEMPOTENCY, CHECK_ALREADY_EMAILED,
+    CHECK_IDEMPOTENCY, CHECK_ALREADY_EMAILED, CHECK_SHEET_FOR_EMAIL,
     SEND_TO_EXISTING_EMAILS, UPDATE_GROUP_KEY,
     LOG_PAYLOADS, LOG_EMAILS,
     APPEND_TO_SHEET, GOOGLE_SHEET_ID, SHEET_TAB,
@@ -654,6 +654,24 @@ def _find_person_in_an(email: str) -> bool:
         return False
 
 
+def _find_email_in_sheet(email: str) -> bool:
+    """Return True if this email already appears in column C of the signup sheet."""
+    if not GOOGLE_SHEET_ID:
+        return False
+    try:
+        svc = _get_sheet_service()
+        result = (svc.spreadsheets().values().get(
+            spreadsheetId=GOOGLE_SHEET_ID,
+            range=f"{SHEET_TAB}!C:C",          # column C = email (see _append_to_sheet row order)
+        ).execute())
+        values = result.get("values", [])       # list of 1-element lists: [["email@x.com"], ...]
+        flat   = {row[0].strip().lower() for row in values if row}
+        return email.strip().lower() in flat
+    except Exception as exc:
+        logger.warning(f"*Exception-Sheet email lookup failed for {email!r}: {exc}")
+        return False
+
+
 # ─── Action Network: Update group_key ────────────────────────────────────────
 
 def update_group_key(group_key: str, person_id: str):
@@ -781,6 +799,11 @@ def process_recipient(recipient: dict) -> tuple:
             if not SEND_TO_EXISTING_EMAILS:
                 return "Flag set to skip existing; {recipient['recipient_email']!r} already in Action Network system", 200
             logger.info("Flag set to email existing AN so sending to {recipient['recipient_email']!r} Network system")
+
+    if CHECK_SHEET_FOR_EMAIL:
+        if _find_email_in_sheet(recipient["recipient_email"]):
+            logger.info(f"Email {recipient['recipient_email']!r} already in Google Sheet — skipping")
+            return f"Already in sheet; skipping {recipient['recipient_email']!r}", 200
 
     json_type = recipient.get("json_type")
     type_config = OSDI_TYPE_CONFIG.get(json_type, {})

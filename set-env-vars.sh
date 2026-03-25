@@ -34,6 +34,8 @@ ENV_VARS=(
   # ── Duplicate / idempotency controls ──────────────────────────────────────
   "CHECK_IDEMPOTENCY=true"                                                          # true = skip if this payload UUID was already processed
   "CHECK_ALREADY_EMAILED=true"                                                      # true = look up AN record to see if welcome email was already sent
+  "CHECK_SHEET_FOR_EMAIL=true"                                                     # true = look up the Google Sheet to
+  # skip emails already logged there
   "SEND_TO_EXISTING_EMAILS=true"                                                    # true = email even if person already existed in AN (requires CHECK_ALREADY_EMAILED=true)
   "UPDATE_GROUP_KEY=false"                                                          # true = write region group_key back to Action Network after emailing
 
@@ -48,7 +50,8 @@ ENV_VARS=(
 
   # ── Transaction buffering ──────────────────────────────────────────────────
   "REMOVE_MULTI_IDENTIFIERS=true"                                                   # true = buffer records sharing the same AN UUID and process as one transaction
-  "TRANSACTION_WINDOW_SECONDS=7200"                                                 # seconds to wait before processing a buffered group (e.g. 10 locally, 7200 in prod)
+  "TRANSACTION_WINDOW_SECONDS=60"                                                   # seconds to wait before
+  # processing a buffered group (e.g. 10 locally, 7200 in prod)
 )
 
 # Join array with | separator and pass to gcloud
