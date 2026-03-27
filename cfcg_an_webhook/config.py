@@ -122,9 +122,9 @@ OSDI_TYPE_CONFIG = {
     'submission':  {'parsed': True,  'send_email': True },  # form submission
     'signature':   {'parsed': True,  'send_email': False},  # petition signature
     'donation':    {'parsed': True,  'send_email': False},  # donation
-    'outreach':    {'parsed': False, 'send_email': False},  # advocacy campaign action
-    'response':    {'parsed': False, 'send_email': False},  # survey response
-    'tagging':     {'parsed': False, 'send_email': False},  # tag applied to person
+    'outreach':    {'parsed': True, 'send_email': False},  # advocacy campaign action
+    'response':    {'parsed': True, 'send_email': False},  # survey response
+    'tagging':     {'parsed': True, 'send_email': False},  # tag applied to person
 }
 
 # US state full name → 2-letter abbreviation (used to convert payload region to sheet column)

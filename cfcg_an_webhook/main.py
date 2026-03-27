@@ -341,6 +341,9 @@ def parse_recipient(record: dict) -> dict:
         logger.warning("Bad osdi data: No 'osdi:' string found in payload")
         return out
 
+    # NOTE: All OSDI types are parsed in the same way since only common elements person and custom fields are
+    # common.  Type specific fields would require additional, specific programming.
+
     # Person ID from _links
     try:
         href = osdi_data["_links"]["osdi:person"]["href"]
