@@ -82,8 +82,7 @@ logger.debug(f"LOG_EMAILS={LOG_EMAILS}")
 
 APPEND_TO_SHEET = os.environ.get("APPEND_TO_SHEET", "false").lower() == "true"  # true = append signup row to Google Sheet (requires GOOGLE_SHEET_ID)
 GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")                         # alphanumeric ID from Sheet URL (/d/<ID>/edit); leave empty if APPEND_TO_SHEET=false
-# SHEET_TAB       = "AN-2026-RAW-DATA"   # sheet tab name — update at start of each year; AN-2026-RAW-DATA production
-SHEET_TAB       = "AN-JAN5-2026-START"   # sheet tab name; test in Copy: AN-JAN5-2026-START
+SHEET_TAB = os.environ["SHEET_TAB"]  # sheet tab name; set in .env (local) or set-env-vars.sh (Cloud Run)
 logger.debug(f"APPEND_TO_SHEET={APPEND_TO_SHEET}  GOOGLE_SHEET_ID={'(set)' if GOOGLE_SHEET_ID else '(empty)'}")
 
 # ─── Transaction buffering ────────────────────────────────────────────────────

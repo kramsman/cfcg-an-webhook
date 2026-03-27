@@ -8,14 +8,6 @@
 # default comma — necessary because some values contain commas (email lists).
 
 ENV_VARS=(
-  # ── GCP / Storage ──────────────────────────────────────────────────────────
-  "CLOUD_PROJECT_ID=trim-sunlight-489423-h3"                                        # GCP project ID (required)
-  "GCS_BUCKET=cfcg-an-webhook-storage-trim-sunlight-489423-h3"                     # Cloud Storage bucket where zip_dict.json is stored
-
-  # ── Email identity ─────────────────────────────────────────────────────────
-  "FROM_EMAIL=centerforcommonground.tech@gmail.com"                                 # sender address shown on welcome emails
-  "FROM_NAME=Center for Common Ground Team"                                         # sender name shown on welcome emails
-  "LOGO_URL=https://storage.googleapis.com/cfcg-an-webhook-storage-trim-sunlight-489423-h3/CFCG_logo.png"  # URL to org logo in email header; leave empty to omit
 
   # ── Email sending flags ────────────────────────────────────────────────────
   "SEND_RECIPIENT_EMAILS=false"                                                     # true = send welcome emails to new signups; false during testing
@@ -36,7 +28,8 @@ ENV_VARS=(
   "CHECK_ALREADY_EMAILED=true"                                                      # true = look up AN record to see if welcome email was already sent
   "CHECK_SHEET_FOR_EMAIL=true"                                                     # true = look up the Google Sheet to
   # skip emails already logged there
-  "SEND_TO_EXISTING_EMAILS=true"                                                    # true = email even if person already existed in AN (requires CHECK_ALREADY_EMAILED=true)
+  "SEND_TO_EXISTING_EMAILS=false"                                                    # true = email even if person
+  # already existed in AN (requires CHECK_ALREADY_EMAILED=true)
   "UPDATE_GROUP_KEY=false"                                                          # true = write region group_key back to Action Network after emailing
 
   # ── Logging ────────────────────────────────────────────────────────────────
@@ -46,12 +39,23 @@ ENV_VARS=(
   # ── Google Sheets ──────────────────────────────────────────────────────────
   "APPEND_TO_SHEET=true"                                                            # true = append signup row to Google Sheet (requires GOOGLE_SHEET_ID)
 #  "GOOGLE_SHEET_ID=15vrphBaWAGPgsF4PlzligEwF-J7IShQVMMqidxvjsp0"                 # jsp0 — PRODUCTION sheet
+#  "SHEET_TAB=AN-2026-RAW-DATA"                                                      # sheet tab name — update at start of each year
   "GOOGLE_SHEET_ID=1TSQ4OEyAETpYV3FPfqiFgDvpH6lN3kscMTOfTkvYI58"                  # YI58 — Copy of sheet for testing
+  "SHEET_TAB=AN-2026-RAW-DATA"                                                      # sheet tab name — update at start of each year
+
+  # ── Email identity ─────────────────────────────────────────────────────────
+  "FROM_EMAIL=centerforcommonground.tech@gmail.com"                                 # sender address shown on welcome emails
+  "FROM_NAME=Center for Common Ground Team"                                         # sender name shown on welcome emails
+  "LOGO_URL=https://storage.googleapis.com/cfcg-an-webhook-storage-trim-sunlight-489423-h3/CFCG_logo.png"  # URL to org logo in email header; leave empty to omit
 
   # ── Transaction buffering ──────────────────────────────────────────────────
   "REMOVE_MULTI_IDENTIFIERS=true"                                                   # true = buffer records sharing the same AN UUID and process as one transaction
   "TRANSACTION_WINDOW_SECONDS=60"                                                   # seconds to wait before
   # processing a buffered group (e.g. 10 locally, 7200 in prod)
+
+  # ── GCP / Storage ──────────────────────────────────────────────────────────
+  "CLOUD_PROJECT_ID=trim-sunlight-489423-h3"                                        # GCP project ID (required)
+  "GCS_BUCKET=cfcg-an-webhook-storage-trim-sunlight-489423-h3"                     # Cloud Storage bucket where zip_dict.json is stored
 )
 
 # Join array with | separator and pass to gcloud
