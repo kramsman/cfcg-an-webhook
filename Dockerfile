@@ -23,5 +23,7 @@ COPY cfcg_an_webhook/ cfcg_an_webhook/
 
 # Cloud Run sets PORT; default to 8080
 ENV PORT=8080
+# Make config.py importable as 'config' (main.py uses bare 'from config import')
+ENV PYTHONPATH=/app/cfcg_an_webhook
 
 CMD uv run gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 cfcg_an_webhook.main:app

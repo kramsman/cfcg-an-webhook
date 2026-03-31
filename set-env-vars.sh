@@ -9,15 +9,15 @@
 
 ENV_VARS=(
 
-  # ── Email sending flags ────────────────────────────────────────────────────
-  "SEND_RECIPIENT_EMAILS=true"                                                      # true = send welcome emails to new signups
-  "SEND_NOTIFICATION_EMAILS=true"                                                   # true = send admin alert emails on errors/warnings (bad osdi type, zip not found, etc.)
-
   # ── Test mode ─────────────────────────────────────────────────────────────
   # TEST_MODE=true redirects welcome emails to TEST_RECIPIENT_EMAILS instead of real volunteers.
   # Set to false only when ready to go live.
   "TEST_MODE=true"
   "TEST_RECIPIENT_EMAILS=kramsman@yahoo.com"                                        # required when TEST_MODE=true; welcome emails go here instead of real volunteers
+
+  # ── Email sending flags ────────────────────────────────────────────────────
+  "SEND_RECIPIENT_EMAILS=true"                                                      # true = send welcome emails to new signups
+  "SEND_NOTIFICATION_EMAILS=true"                                                   # true = send admin alert emails on errors/warnings (bad osdi type, zip not found, etc.)
 
   # ── Email notification lists ───────────────────────────────────────────────
   "ADMIN_ALERT_EMAILS=kramsman@yahoo.com"                                           # receives admin alert emails (errors, warnings); required when SEND_NOTIFICATION_EMAILS=true
