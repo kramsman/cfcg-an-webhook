@@ -32,13 +32,13 @@ from config import (
     ZIP_DICT_PATH, CLOUD_PROJECT_ID, GCS_BUCKET,
     FROM_EMAIL, FROM_NAME, LOGO_URL,
     SEND_RECIPIENT_EMAILS, SEND_NOTIFICATION_EMAILS,
-    ALLOWED_RECIPIENT_EMAILS, NOTIFICATION_EMAIL_LIST,
-    PAYLOAD_NOTIFICATION_LIST, EXCLUDED_PAYLOAD_OSDI,
+    TEST_MODE, TEST_RECIPIENT_EMAILS,
+    ADMIN_ALERT_EMAILS, PAYLOAD_OBSERVER_EMAILS, EXCLUDED_PAYLOAD_OSDI,
     ALWAYS_CC_LIST, ALWAYS_BCC_LIST,
     CHECK_IDEMPOTENCY, CHECK_ALREADY_EMAILED, CHECK_SHEET_FOR_EMAIL,
     SEND_TO_EXISTING_EMAILS, UPDATE_GROUP_KEY,
     LOG_PAYLOADS, LOG_EMAILS,
-    APPEND_TO_SHEET, GOOGLE_SHEET_ID, SHEET_TAB,
+    APPEND_TO_SHEET, GOOGLE_SHEET_ID, SHEET_TAB, TEST_SHEET_ID, TEST_SHEET_TAB,
     REMOVE_MULTI_IDENTIFIERS, TRANSACTION_WINDOW_SECONDS,
     ZIP_DICT_FIELDS, OSDI_TYPE_CONFIG, _STATE_ABBREV,
     PORT,
@@ -409,7 +409,7 @@ def parse_recipient(record: dict) -> dict:
 
 # ─── Organizer Lookup ─────────────────────────────────────────────────────────
 
-def attach_organizer_info(recipient: dict) -> str:
+def lookup_organizer(recipient: dict) -> str:
     """Look up organizer info by zip and add fields to the recipient dict.
 
     Adds ``org_email``, ``org_name``, ``reg_key``, and ``cc_org`` to the
@@ -452,7 +452,7 @@ def _build_welcome_email(r: dict) -> dict:
 
     Args:
         r: Recipient dict with organizer fields attached (output of
-            ``attach_organizer_info()``). Must contain ``recipient_first_name``,
+            ``lookup_organizer()``). Must contain ``recipient_first_name``,
             ``recipient_email``, ``org_name``, ``org_email``, and ``cc_org``.
 
     Returns:
@@ -548,8 +548,8 @@ def _add_copy_emails(personalization: dict, copy_type: str, pairs: list):
 def _send_welcome_email(recipient: dict) -> tuple:
     """Send the welcome email via SendGrid.
 
-    Skips sending if the recipient is not in ``ALLOWED_RECIPIENT_EMAILS``
-    (when that list is non-empty).
+    In TEST_MODE, redirects the email to ``TEST_RECIPIENT_EMAILS`` instead of
+    the real volunteer and prepends ``[TEST]`` to the subject line.
 
     Args:
         recipient: Recipient dict with organizer fields attached.
@@ -561,13 +561,16 @@ def _send_welcome_email(recipient: dict) -> tuple:
     """
     to_email = recipient.get("recipient_email", "")
 
-    if ALLOWED_RECIPIENT_EMAILS and to_email not in ALLOWED_RECIPIENT_EMAILS:
-        logger.info(f"Not in ALLOWED_RECIPIENT_EMAILS, would have sent: {to_email}")
-        return "Would have sent — not in allow-list", 200
+    if TEST_MODE:
+        logger.info(f"TEST MODE: would have sent welcome email to {to_email!r} — redirecting to test recipients")
 
     api_key    = get_secret("SENDGRID_API_KEY")
     sg         = SendGridAPIClient(api_key=api_key)
     email_data = _build_welcome_email(recipient)
+
+    if TEST_MODE:
+        email_data["personalizations"][0]["to"] = [{"email": e} for e in TEST_RECIPIENT_EMAILS]
+        email_data["personalizations"][0]["subject"] = "[TEST] " + email_data["personalizations"][0]["subject"]
 
     if LOG_EMAILS:
         p = email_data["personalizations"][0]
@@ -589,7 +592,7 @@ def _send_welcome_email(recipient: dict) -> tuple:
 def _send_notification(subject: str, message: str):
     """Send an admin notification email (errors, warnings, etc.).
 
-    Sends to ``NOTIFICATION_EMAIL_LIST``. Failures are logged but not raised.
+    Sends to ``ADMIN_ALERT_EMAILS``. Failures are logged but not raised.
 
     Args:
         subject: Short subject line (will be prefixed with ``[CFCG Webhook]``).
@@ -603,7 +606,7 @@ def _send_notification(subject: str, message: str):
             "from":    {"email": FROM_EMAIL, "name": FROM_NAME},
             "personalizations": [{
                 "subject": f"[CFCG Webhook] {subject}",
-                "to": NOTIFICATION_EMAIL_LIST,
+                "to": ADMIN_ALERT_EMAILS,
             }],
         }
         sg.client.mail.send.post(request_body=data)
@@ -612,8 +615,8 @@ def _send_notification(subject: str, message: str):
 
 
 def _send_payload_notification(payload, emails: list, types: list):
-    """Send prettified payload JSON to PAYLOAD_NOTIFICATION_LIST on every webhook arrival."""
-    if not PAYLOAD_NOTIFICATION_LIST:
+    """Send prettified payload JSON to PAYLOAD_OBSERVER_EMAILS on every webhook arrival."""
+    if not PAYLOAD_OBSERVER_EMAILS:
         return
     if EXCLUDED_PAYLOAD_OSDI and types and all(t in EXCLUDED_PAYLOAD_OSDI for t in types):
         logger.debug(f"Payload notification suppressed — all types {types} are in EXCLUDED_PAYLOAD_OSDI")
@@ -629,7 +632,7 @@ def _send_payload_notification(payload, emails: list, types: list):
         data = {
             "content": [{"type": "text/html", "value": body}],
             "from": {"email": FROM_EMAIL, "name": FROM_NAME},
-            "personalizations": [{"to": PAYLOAD_NOTIFICATION_LIST}],
+            "personalizations": [{"to": PAYLOAD_OBSERVER_EMAILS}],
             "subject": f"Webhook - new payload — {email_label} ({type_label})",
         }
         sg.client.mail.send.post(request_body=data)
@@ -723,7 +726,10 @@ def _get_sheet_service():
 
 
 def _append_to_sheet(recipient: dict):
-    """Append one signup row to the Google Sheet defined by GOOGLE_SHEET_ID.
+    """Append one signup row to the appropriate Google Sheet.
+
+    Uses TEST_SHEET_ID/TEST_SHEET_TAB when TEST_MODE=true, otherwise
+    GOOGLE_SHEET_ID/SHEET_TAB.
 
     Column order matches the AN report export:
     first_name | last_name | email | zip_code | can2_user_city | can2_county |
@@ -731,9 +737,11 @@ def _append_to_sheet(recipient: dict):
     Volunteer_Text to voters | Volunteer_Phonebank to voters |
     can2_user_tags | can2_subscription_date | Organization
 
-    Does nothing if APPEND_TO_SHEET=false or GOOGLE_SHEET_ID is empty.
+    Does nothing if APPEND_TO_SHEET=false or the relevant sheet ID is empty.
     """
-    if not APPEND_TO_SHEET or not GOOGLE_SHEET_ID:
+    sheet_id = TEST_SHEET_ID if TEST_MODE else GOOGLE_SHEET_ID
+    tab      = TEST_SHEET_TAB if TEST_MODE else SHEET_TAB
+    if not APPEND_TO_SHEET or not sheet_id:
         return
     try:
         cf = recipient.get("custom_fields_dict") or {}
@@ -759,8 +767,8 @@ def _append_to_sheet(recipient: dict):
         logger.info(f"[SHEET ROW] {dict(zip(headers, row))}")
         svc = _get_sheet_service()
         (svc.spreadsheets().values().append(
-            spreadsheetId=GOOGLE_SHEET_ID,
-            range=SHEET_TAB,
+            spreadsheetId=sheet_id,
+            range=tab,
             valueInputOption="USER_ENTERED",
             insertDataOption="INSERT_ROWS",
             body={"values": [row]},
@@ -776,10 +784,17 @@ def process_recipient(recipient: dict) -> tuple:
     """Run the full pipeline for one recipient.
 
     Steps:
-        1. Look up organizer by zip (``attach_organizer_info``).
-        2. Send welcome email (``_send_welcome_email``).
-        3. Optionally update group_key in Action Network (``update_group_key``),
-           controlled by the ``UPDATE_GROUP_KEY`` flag.
+        1.  Look up organizer by zip (``lookup_organizer``).
+        2.  Validate email address.
+        3.  Skip if already in Action Network (``CHECK_ALREADY_EMAILED``).
+        4.  Skip if already in Google Sheet (``CHECK_SHEET_FOR_EMAIL``).
+        5.  Skip if osdi type is unknown or has send_email=False.
+        6.  Skip if ``SEND_RECIPIENT_EMAILS=false``.
+        7.  Append row to Google Sheet (``_append_to_sheet``).
+        8.  Send welcome email (``_send_welcome_email``); in TEST_MODE, email
+            is redirected to ``TEST_RECIPIENT_EMAILS`` instead of the volunteer.
+        9.  Optionally update group_key in Action Network (``update_group_key``),
+            controlled by the ``UPDATE_GROUP_KEY`` flag.
 
     Args:
         recipient: Flat recipient dict produced by ``parse_recipient()``.
@@ -787,7 +802,7 @@ def process_recipient(recipient: dict) -> tuple:
     Returns:
         Tuple of ``(message, http_status_code)``.
     """
-    error = attach_organizer_info(recipient)
+    error = lookup_organizer(recipient)
     if error:
         logger.warning(f"Could not find Org info {recipient.get('person_id')}: error={error!r}")
         return f"Skipped (error: {error})", 400
@@ -825,11 +840,11 @@ def process_recipient(recipient: dict) -> tuple:
         logger.info(f"osdi type {json_type!r} send_email=False, is configured but skipping")
         return f"Skipped (send_email=False for type {json_type!r})", 200
 
-    _append_to_sheet(recipient)
-
     if not SEND_RECIPIENT_EMAILS:
         logger.info(f"SEND_RECIPIENT_EMAILS: {SEND_RECIPIENT_EMAILS}; skipping {recipient.get('recipient_email')}")
         return "Email sending disabled", 200
+
+    _append_to_sheet(recipient)
 
     msg, status = _send_welcome_email(recipient)
 
@@ -971,9 +986,10 @@ def settings_status():
         "FROM_NAME":                  FROM_NAME,
         "SEND_RECIPIENT_EMAILS":      SEND_RECIPIENT_EMAILS,
         "SEND_NOTIFICATION_EMAILS":   SEND_NOTIFICATION_EMAILS,
-        "ALLOWED_RECIPIENT_EMAILS":   ALLOWED_RECIPIENT_EMAILS,
-        "NOTIFICATION_EMAIL_LIST":    [e["email"] for e in NOTIFICATION_EMAIL_LIST],
-        "PAYLOAD_NOTIFICATION":       [e["email"] for e in PAYLOAD_NOTIFICATION_LIST],
+        "TEST_MODE":                  TEST_MODE,
+        "TEST_RECIPIENT_EMAILS":      TEST_RECIPIENT_EMAILS,
+        "ADMIN_ALERT_EMAILS":         [e["email"] for e in ADMIN_ALERT_EMAILS],
+        "PAYLOAD_OBSERVER_EMAILS":    [e["email"] for e in PAYLOAD_OBSERVER_EMAILS],
         "EXCLUDED_PAYLOAD_OSDI":      sorted(EXCLUDED_PAYLOAD_OSDI),
         "ALWAYS_CC_LIST":             [e for e, _ in ALWAYS_CC_LIST],
         "ALWAYS_BCC_LIST":            [e for e, _ in ALWAYS_BCC_LIST],
@@ -985,6 +1001,8 @@ def settings_status():
         "LOG_EMAILS":                 LOG_EMAILS,
         "APPEND_TO_SHEET":            APPEND_TO_SHEET,
         "GOOGLE_SHEET_ID":            GOOGLE_SHEET_ID,
+        "TEST_SHEET_ID":              TEST_SHEET_ID,
+        "TEST_SHEET_TAB":             TEST_SHEET_TAB,
         "REMOVE_MULTI_IDENTIFIERS":   REMOVE_MULTI_IDENTIFIERS,
         "TRANSACTION_WINDOW_SECONDS": TRANSACTION_WINDOW_SECONDS,
     }

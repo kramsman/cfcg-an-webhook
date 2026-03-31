@@ -113,9 +113,9 @@ class TestParseRecipient:
         assert result["recipient_last_name"] == "Smith"
 
 
-# ─── attach_organizer_info ─────────────────────────────────────────────────────────
+# ─── lookup_organizer ─────────────────────────────────────────────────────────
 
-class TestAttachOrganizer:
+class TestLookupOrganizer:
 
     def test_happy_path(self, sample_payload, minimal_zip_dict, monkeypatch):
         """Attaches organizer fields when zip is found."""
@@ -126,7 +126,7 @@ class TestAttachOrganizer:
         print(f"  Parameters : recipient zip={recipient['recipient_zip']}")
         print(f"  Input      : ZIP_TO_ORG={minimal_zip_dict}")
 
-        error = main.attach_organizer_info(recipient)
+        error = main.lookup_organizer(recipient)
 
         print(f"  Output     : error={error!r}, org_email={recipient.get('org_email')!r}, "
               f"org_name={recipient.get('org_name')!r}, reg_key={recipient.get('reg_key')!r}")
@@ -146,7 +146,7 @@ class TestAttachOrganizer:
         print(f"  Parameters : recipient zip={recipient['recipient_zip']}")
         print(f"  Input      : ZIP_TO_ORG keys={list(minimal_zip_dict.keys())}")
 
-        error = main.attach_organizer_info(recipient)
+        error = main.lookup_organizer(recipient)
 
         print(f"  Output     : error={error!r}")
 
@@ -265,12 +265,12 @@ class TestProcessRecipient:
     @pytest.mark.integration
     def test_full_pipeline_with_mock_sendgrid(self, sample_payload, minimal_zip_dict, monkeypatch):
         """
-        Integration: runs parse → attach_organizer_info → _send_welcome_email as a pipeline.
+        Integration: runs parse → lookup_organizer → _send_welcome_email as a pipeline.
         Mocks the SendGrid API call but exercises all other real code paths.
         """
         monkeypatch.setattr(main, "ZIP_TO_ORG", minimal_zip_dict)
         monkeypatch.setattr(main, "SEND_RECIPIENT_EMAILS", True)
-        monkeypatch.setattr(main, "ALLOWED_RECIPIENT_EMAILS", [])
+        monkeypatch.setattr(main, "TEST_MODE", False)
         monkeypatch.setattr(main, "UPDATE_GROUP_KEY", False)
 
         # Mock get_secret to return a fake API key
@@ -877,17 +877,18 @@ class TestSendGridLive:
     def test_send_real_email(self, parsed_recipient, monkeypatch):
         """
         Integration: sends a real email via SendGrid using live credentials
-        from Secret Manager. Only runs when CLOUD_PROJECT_ID is set and
-        recipient is in ALLOWED_RECIPIENT_EMAILS.
+        from Secret Manager. Only runs when CLOUD_PROJECT_ID is set.
+        Uses TEST_MODE=true to redirect to TEST_RECIPIENT_EMAILS.
 
-        WARNING: sends an actual email. Use a test address in ALLOWED_RECIPIENT_EMAILS.
+        WARNING: sends an actual email. Set TEST_RECIPIENT_EMAILS to a safe address.
         """
-        test_email = os.environ.get("ALLOWED_RECIPIENT_EMAILS", "").split(",")[0].strip()
+        test_email = os.environ.get("TEST_RECIPIENT_EMAILS", "").split(",")[0].strip()
         if not test_email:
-            pytest.skip("ALLOWED_RECIPIENT_EMAILS not set — no safe test address available")
+            pytest.skip("TEST_RECIPIENT_EMAILS not set — no safe test address available")
 
-        parsed_recipient["recipient_email"] = test_email
-        monkeypatch.setattr(main, "ALLOWED_RECIPIENT_EMAILS", [test_email])
+        parsed_recipient["recipient_email"] = "fake-volunteer@example.com"
+        monkeypatch.setattr(main, "TEST_MODE", True)
+        monkeypatch.setattr(main, "TEST_RECIPIENT_EMAILS", [test_email])
         monkeypatch.setattr(main, "SEND_RECIPIENT_EMAILS", True)
 
         print(f"\n--- test_send_real_email ---")

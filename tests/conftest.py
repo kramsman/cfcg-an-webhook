@@ -29,10 +29,10 @@ MARKERS
                  Skipped automatically if required env vars are not set.
 
 CREDENTIALS NEEDED FOR INTEGRATION TESTS
-    CLOUD_PROJECT_ID   — enables Secret Manager access (set in .env)
-    GCS_BUCKET         — enables GCS zip dict load test (set in .env)
-    TEST_AN_PERSON_ID  — enables live Action Network update test (set in .env)
-    ALLOWED_RECIPIENT_EMAILS — safe address(es) for live email send test (set in .env)
+    CLOUD_PROJECT_ID      — enables Secret Manager access (set in .env)
+    GCS_BUCKET            — enables GCS zip dict load test (set in .env)
+    TEST_AN_PERSON_ID     — enables live Action Network update test (set in .env)
+    TEST_RECIPIENT_EMAILS — safe address(es) for live email send test (set in .env)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
@@ -210,7 +210,7 @@ def parsed_recipient(sample_payload, minimal_zip_dict, monkeypatch):
     monkeypatch.setattr(main, "ZIP_TO_ORG", minimal_zip_dict)
 
     recipient = main.parse_recipient(sample_payload[0])
-    main.attach_organizer_info(recipient)
+    main.lookup_organizer(recipient)
     return recipient
 
 

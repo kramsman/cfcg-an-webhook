@@ -25,22 +25,23 @@ LOGO_URL   = os.environ.get("LOGO_URL",   "")                                   
 
 # ─── Email sending flags ──────────────────────────────────────────────────────
 
-# Set SEND_RECIPIENT_EMAILS=false during testing to skip actual sends.
-SEND_RECIPIENT_EMAILS    = os.environ.get("SEND_RECIPIENT_EMAILS",    "true").lower()  == "true"  # true = send welcome emails to new signups; set false during testing
+SEND_RECIPIENT_EMAILS    = os.environ.get("SEND_RECIPIENT_EMAILS",    "true").lower()  == "true"  # true = send welcome emails to new signups; false = skip all sends
 SEND_NOTIFICATION_EMAILS = os.environ.get("SEND_NOTIFICATION_EMAILS", "false").lower() == "true"  # true = send admin alert emails on errors/warnings
+TEST_MODE                = os.environ.get("TEST_MODE",                "false").lower() == "true"  # true = redirect emails to TEST_RECIPIENT_EMAILS instead of real volunteers
 logger.debug(f"SEND_RECIPIENT_EMAILS={SEND_RECIPIENT_EMAILS}")
 logger.debug(f"SEND_NOTIFICATION_EMAILS={SEND_NOTIFICATION_EMAILS}")
+logger.debug(f"TEST_MODE={TEST_MODE}")
 
-# Comma-separated allow-list for testing. Leave empty to email everyone.
-# Example:  ALLOWED_RECIPIENT_EMAILS=you@gmail.com,test@example.com
-ALLOWED_RECIPIENT_EMAILS = [
-    e.strip() for e in os.environ.get("ALLOWED_RECIPIENT_EMAILS", "").split(",") if e.strip()
+# TEST_RECIPIENT_EMAILS: required when TEST_MODE=true. Emails go here instead of real volunteers.
+# Example:  TEST_RECIPIENT_EMAILS=you@gmail.com,tester@example.com
+TEST_RECIPIENT_EMAILS = [
+    e.strip() for e in os.environ.get("TEST_RECIPIENT_EMAILS", "").split(",") if e.strip()
 ]
-NOTIFICATION_EMAIL_LIST = [                                                         # admin alert recipients; leave empty to disable notifications
-    {"email": e.strip()} for e in os.environ.get("NOTIFICATION_EMAIL_LIST", "").split(",") if e.strip()
+ADMIN_ALERT_EMAILS = [                                                              # error/warning alert recipients; required when SEND_NOTIFICATION_EMAILS=true
+    {"email": e.strip()} for e in os.environ.get("ADMIN_ALERT_EMAILS", "").split(",") if e.strip()
 ]
-PAYLOAD_NOTIFICATION_LIST = [                                                       # receives a copy of every incoming webhook payload; leave empty to disable
-    {"email": e.strip()} for e in os.environ.get("PAYLOAD_NOTIFICATION", "").split(",") if e.strip()
+PAYLOAD_OBSERVER_EMAILS = [                                                         # receives a copy of every incoming webhook payload; leave empty to disable
+    {"email": e.strip()} for e in os.environ.get("PAYLOAD_OBSERVER_EMAILS", "").split(",") if e.strip()
 ]
 EXCLUDED_PAYLOAD_OSDI = {                                                           # suppress payload notification emails for these osdi types (e.g. attendance,outreach)
     t.strip() for t in os.environ.get("EXCLUDED_PAYLOAD_OSDI", "").split(",") if t.strip()
@@ -80,10 +81,24 @@ logger.debug(f"LOG_EMAILS={LOG_EMAILS}")
 
 # ─── Google Sheets ────────────────────────────────────────────────────────────
 
-APPEND_TO_SHEET = os.environ.get("APPEND_TO_SHEET", "false").lower() == "true"  # true = append signup row to Google Sheet (requires GOOGLE_SHEET_ID)
-GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")                         # alphanumeric ID from Sheet URL (/d/<ID>/edit); leave empty if APPEND_TO_SHEET=false
-SHEET_TAB = os.environ["SHEET_TAB"]  # sheet tab name; set in .env (local) or set-env-vars.sh (Cloud Run)
-logger.debug(f"APPEND_TO_SHEET={APPEND_TO_SHEET}  GOOGLE_SHEET_ID={'(set)' if GOOGLE_SHEET_ID else '(empty)'}")
+APPEND_TO_SHEET = os.environ.get("APPEND_TO_SHEET", "false").lower() == "true"  # true = append signup row to Google Sheet
+GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")                         # production sheet ID from URL (/d/<ID>/edit); used when TEST_MODE=false
+SHEET_TAB       = os.environ["SHEET_TAB"]                                        # production sheet tab name; set in .env (local) or set-env-vars.sh (Cloud Run)
+TEST_SHEET_ID   = os.environ.get("TEST_SHEET_ID",  "")                          # test sheet ID; required when APPEND_TO_SHEET=true and TEST_MODE=true
+TEST_SHEET_TAB  = os.environ.get("TEST_SHEET_TAB", "")                          # test sheet tab name; required when APPEND_TO_SHEET=true and TEST_MODE=true
+logger.debug(f"APPEND_TO_SHEET={APPEND_TO_SHEET}  GOOGLE_SHEET_ID={'(set)' if GOOGLE_SHEET_ID else '(empty)'}  TEST_SHEET_ID={'(set)' if TEST_SHEET_ID else '(empty)'}")
+
+# ─── Startup validation ───────────────────────────────────────────────────────
+# Fail immediately with a clear message rather than silently doing nothing at runtime.
+
+if TEST_MODE and not TEST_RECIPIENT_EMAILS:
+    raise ValueError("TEST_MODE=true but TEST_RECIPIENT_EMAILS is empty — add at least one test email address")
+if SEND_NOTIFICATION_EMAILS and not ADMIN_ALERT_EMAILS:
+    raise ValueError("SEND_NOTIFICATION_EMAILS=true but ADMIN_ALERT_EMAILS is empty — add at least one alert email address")
+if APPEND_TO_SHEET and not TEST_MODE and not GOOGLE_SHEET_ID:
+    raise ValueError("APPEND_TO_SHEET=true but GOOGLE_SHEET_ID is empty")
+if APPEND_TO_SHEET and TEST_MODE and not TEST_SHEET_ID:
+    raise ValueError("APPEND_TO_SHEET=true and TEST_MODE=true but TEST_SHEET_ID is empty")
 
 # ─── Transaction buffering ────────────────────────────────────────────────────
 
@@ -117,13 +132,13 @@ ZIP_DICT_FIELDS = ['region_key', 'email', 'nickname', 'cc_org']
 #   Queries, Surveys, Tags, Unique ID Lists, Wrappers
 OSDI_TYPE_CONFIG = {
     # type           parsed      send_email
-    'attendance':  {'parsed': True,  'send_email': False},  # event RSVP
+    'attendance':  {'parsed': True,  'send_email': True},  # event RSVP
     'submission':  {'parsed': True,  'send_email': True },  # form submission
-    'signature':   {'parsed': True,  'send_email': False},  # petition signature
-    'donation':    {'parsed': True,  'send_email': False},  # donation
-    'outreach':    {'parsed': True, 'send_email': False},  # advocacy campaign action
-    'response':    {'parsed': True, 'send_email': False},  # survey response
-    'tagging':     {'parsed': True, 'send_email': False},  # tag applied to person
+    'signature':   {'parsed': True,  'send_email': True},  # petition signature
+    'donation':    {'parsed': True,  'send_email': True},  # donation
+    'outreach':    {'parsed': True, 'send_email': True},  # advocacy campaign action
+    'response':    {'parsed': True, 'send_email': True},  # survey response
+    'tagging':     {'parsed': True, 'send_email': True},  # tag applied to person
 }
 
 # US state full name → 2-letter abbreviation (used to convert payload region to sheet column)
